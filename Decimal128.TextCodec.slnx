@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Decimal128.TextCodec/Decimal128.TextCodec.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Decimal128.TextCodec.Tests/Decimal128.TextCodec.Tests.csproj" />
+  </Folder>
+</Solution>

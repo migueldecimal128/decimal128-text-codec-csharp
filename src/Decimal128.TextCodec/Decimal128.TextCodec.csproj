@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Decimal128.TextCodec</RootNamespace>
+    <AssemblyName>Decimal128.TextCodec</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- CheckForOverflowUnderflow is stated rather than assumed. Several sites
+         in the codec rely on wrapping 64-bit arithmetic: the coefficient
+         increment that carries into the high word, the 128-bit products taken
+         modulo 2^128, the accumulators past the digit limit whose values are
+         then discarded. The Swift port spells each of them with its wrapping
+         operators; here they are plain operators, and this property is what
+         guarantees they stay plain. Each such site carries a comment saying why
+         the wrap is the intended arithmetic. -->
+    <CheckForOverflowUnderflow>false</CheckForOverflowUnderflow>
+  </PropertyGroup>
+
+  <!-- VERIFY_ENABLED arms the internal-state assertions, exactly as the Swift
+       port's Package.swift does and for the same reason: it is defined for
+       Debug only, because a release consumer compiles against this library and
+       must not take a throw inside it on data they do not control. The demand
+       checks (buffer sizing and the precision invariant) are live in every
+       configuration regardless. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <DefineConstants>$(DefineConstants);VERIFY_ENABLED</DefineConstants>
+  </PropertyGroup>
+
+</Project>

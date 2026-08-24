@@ -151,6 +151,7 @@ public class TestCorpusVectors
     /// </summary>
     internal static void RunDecodeTable(IReadOnlyList<CorpusRow> rows, string label)
     {
+        byte[] buf = new byte[Decimal128TextCodec.MaxLen];
         foreach (var row in rows)
         {
             string bidText = Decimal128TextCodec.Bid128ToString(row.Bid);
@@ -159,6 +160,14 @@ public class TestCorpusVectors
             string dpdText = Decimal128TextCodec.Dpd128ToString(row.Dpd);
             if (dpdText != row.Text)
                 Assert.Fail($"{label} line {row.LineNumber}: dpd #{row.DpdHex} rendered <{dpdText}>, expected <{row.Text}>");
+            int bidLen = Decimal128TextCodec.Bid128ToString(buf, row.Bid);
+            string bidBuf = Encoding.Latin1.GetString(buf, 0, bidLen);
+            if (bidBuf != row.Text)
+                Assert.Fail($"{label} line {row.LineNumber}: bid into buffer #{row.BidHex} rendered <{bidBuf}>, expected <{row.Text}>");
+            int dpdLen = Decimal128TextCodec.Dpd128ToString(buf, row.Dpd);
+            string dpdBuf = Encoding.Latin1.GetString(buf, 0, dpdLen);
+            if (dpdBuf != row.Text)
+                Assert.Fail($"{label} line {row.LineNumber}: dpd into buffer #{row.DpdHex} rendered <{dpdBuf}>, expected <{row.Text}>");
         }
     }
 

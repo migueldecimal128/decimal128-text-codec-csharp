@@ -65,7 +65,7 @@ namespace Decimal128.TextCodec;
 /// This class provides no arithmetic, no comparison and no field extraction.
 /// For the full IEEE 754-2019 decimal128 implementation — arithmetic,
 /// comparison, every rounding-direction attribute, IEEE status flags — see
-/// <c>decimal128-csharp</c> at https://decimal128.com.
+/// https://decimal128.com.
 /// </para>
 /// <para>
 /// <b>Rounding.</b> Rounding, where the text → bits direction requires it, is
@@ -416,233 +416,47 @@ public static class Decimal128TextCodec
     /// Decode a BID128 bit pattern to its decimal character sequence.
     /// </summary>
     /// <remarks>
-    /// Dispatches to specialized renderers based on the encoding's class:
-    /// Infinity, NaN (quiet or signaling, with optional payload), zero
-    /// (canonical or non-canonical), or finite non-zero. Field extraction
-    /// follows IEEE 754-2019 §3.5.2.
+    /// Renders through <see cref="decodeBid128toBytes"/> into a stack buffer
+    /// and wraps the bytes it wrote. Field extraction, class dispatch and every
+    /// leaf renderer live there; this exists only to hand back a
+    /// <see cref="string"/>.
     /// </remarks>
     private static string decodeBid128toString(ulong bid128Hi, ulong bid128Lo)
     {
-        // IEEE754-2019 Table 3.6 -- Decimal interchange format parameters, p 23
-        const int t = T_WIDTH; // trailing significand field width in bits
-        verify(1 + W5 + t == K_WIDTH);
-
-        // 1 + 17 + 110 == 128
-        // 1 bit for the sign
-        bool sign = ((bid128Hi & SIGN_BIT) != 0);
-        // w5 bit combination field ... for bid128 0x1FFFF
-        int combination = (int)((bid128Hi >> (t - 64)) & 0x1FFFF);
-        ulong coeffTHi = bid128Hi & COEFF_T_HI_MASK;
-
-        ulong coeffHi;
-        int qExp;
-        if ((combination >> (W5 - 2)) != 0b11)
-        {
-            //  IEEE754-2019 3.5.2 c) 2) i) -- p 21
-            //   If G0 and G1 together are one of 00, 01, or 10, then the biased
-            //   exponent E is formed from G0 through Gw+1 and the significand
-            //   is formed from bits Gw+2 through the end of the encoding (including T).
-            //
-            // w+5=17 w=12 Gw+1=G13 Gw+2=G14
-            // the top 14 bits of the combination field represent the biased exponent ...
-            int biasedExponentE = combination >> 3;
-            qExp = biasedExponentE - BIAS;
-            // ... and the bottom 3 bits are the most significant bits of the significand
-            coeffHi = (ulong)(combination & 0x07);
-        }
-        else if ((combination >> (W5 - 4)) != 0b1111)
-        {
-            // IEEE754-2019 3.5.2 c) 2) ii) -- p 21
-            //  If G0 and G1 together are 11 and G2 and G3 together are one
-            //  of 00, 01, or 10, then the biased exponent E is formed from
-            //  G2 through Gw+3 and the significand is formed by prefixing
-            //  the 4 bits (8 + Gw+4) to T.
-            int biasedExponentE = (combination >> 1) & ((1 << (W5 - 5 + 2)) - 1);
-            qExp = biasedExponentE - BIAS;
-            coeffHi = 8 + (ulong)(combination & 1);
-        }
-        else if ((combination >> (W5 - 5)) == 0b11110)
-        {
-            // if the top 5 bits are 0b11110 then Infinity
-            return infString(sign);
-        }
-        else
-        {
-            // if the top 5 bits are 0b11111 then NaN,
-            // with the next bit determining signaling NaN
-            verify((combination >> (W5 - 5)) == 0b11111);
-            bool isSignalingNaN = (((combination >> (W5 - 6)) & 1) != 0);
-            return nanString(sign, isSignalingNaN, coeffTHi, bid128Lo);
-        }
-
-        ulong dw1 = (coeffHi << (t - 64)) | coeffTHi;
-        ulong dw0 = bid128Lo;
-        // IEEE754-2019 3.5.2 p21
-        //  If the value exceeds the maximum, the significand c is
-        //  non-canonical and the value used for c is zero.
-        if ((dw1 | dw0) == 0 ||
-            MAXX_COEFF_34_HI < dw1 ||
-            (dw1 == MAXX_COEFF_34_HI && (MAXX_COEFF_34_LO - 1) < dw0))
-        {
-            return zerString(sign, qExp);
-        }
-        return fnzString(sign, qExp, dw1, dw0);
+        Span<byte> ascii = stackalloc byte[MaxLen];
+        int n = decodeBid128toBytes(ascii, bid128Hi, bid128Lo);
+        return Encoding.Latin1.GetString(ascii[..n]);
     }
 
     /// <summary>
-    /// Unpack a DPD128 encoding and hand the pieces to the shared renderers.
+    /// Decode a DPD128 bit pattern to its decimal character sequence.
     /// </summary>
     /// <remarks>
-    /// The peer of <see cref="decodeBid128toString"/>: both reduce an encoding
-    /// to <c>(sign, qExp, coefficient)</c> and then dispatch to the same four
-    /// renderers, which have never seen an interchange format.
+    /// The peer of <see cref="decodeBid128toString"/>, and the same
+    /// arrangement: all the work is <see cref="decodeDpd128toBytes"/>; this
+    /// only wraps the bytes it wrote.
     /// </remarks>
     private static string decodeDpd128toString(ulong dpd128Hi, ulong dpd128Lo)
     {
-        const int w = 12;      // exponent continuation width
-        const int t = T_WIDTH; // trailing significand field width in bits
-
-        bool sign = ((dpd128Hi & SIGN_BIT) != 0);
-        int combination = (int)((dpd128Hi >> (t - 64)) & 0x1FFFF);
-        // in DPD the low w bits of the biased exponent always sit at the bottom of G
-        int expContinuation = combination & 0x0FFF;
-
-        ulong d0;
-        int qExp;
-        bool isNaN = false;
-        bool isSignaling = false;
-
-        if ((combination >> (W5 - 2)) != 0b11)
-        {
-            // G0G1 is 00, 01 or 10: leading digit 0..7, exponent MSBs in G0G1
-            int expMSB = combination >> (W5 - 2);
-            qExp = ((expMSB << w) | expContinuation) - BIAS;
-            d0 = (ulong)((combination >> w) & 0b111);
-        }
-        else if ((combination >> (W5 - 4)) != 0b1111)
-        {
-            // G0G1 is 11 and G2G3 is not 11: leading digit 8..9, exponent MSBs in G2G3
-            int expMSB = (combination >> (W5 - 4)) & 0b11;
-            qExp = ((expMSB << w) | expContinuation) - BIAS;
-            d0 = 8 + (ulong)((combination >> w) & 0b1);
-        }
-        else if ((combination >> (W5 - 5)) == 0b11110)
-        {
-            return infString(sign);
-        }
-        else
-        {
-            verify((combination >> (W5 - 5)) == 0b11111);
-            isNaN = true;
-            isSignaling = (((combination >> (W5 - 6)) & 1) != 0);
-            d0 = 0;
-            qExp = 0;
-        }
-
-        // Rebuild the binary coefficient from the declets. The leading digit
-        // rides along as a sixth declet of the high group: values 0..9 encode
-        // to themselves as a declet, so it decodes back unchanged.
-        ulong decletsHi = (d0 << 50) | ((dpd128Hi & 0x3FFF_FFFF_FFFF) << 4) | (dpd128Lo >> 60);
-        ulong decletsLo = dpd128Lo & 0x0FFF_FFFF_FFFF_FFFF; // low 60 bits, six declets
-        ulong binHi = binFromDeclets(decletsHi);
-        ulong binLo = binFromDeclets(decletsLo);
-
-        ulong dw1;
-        ulong dw0;
-        if (binHi == 0)
-        {
-            dw1 = 0;
-            dw0 = binLo;
-        }
-        else
-        {
-            // binHi * 10^18 + binLo is a genuine 128-bit product: the low word
-            // is the wrapping sum, and the carry out of it feeds the high word.
-            // (Swift spells these `&*` and `&+`; C# wraps by default.)
-            dw0 = (binHi * TEN_POW_18) + binLo;
-            ulong carry = (dw0 < binLo) ? 1UL : 0UL;
-            dw1 = unsignedMulHi(binHi, TEN_POW_18) + carry;
-        }
-
-        if (isNaN)
-            return nanString(sign, isSignaling, dw1, dw0);
-        if ((dw1 | dw0) == 0)
-            return zerString(sign, qExp);
-        return fnzString(sign, qExp, dw1, dw0);
-    }
-
-    private static string infString(bool sign)
-    {
-        return (sign) ? "-Infinity" : "Infinity";
-    }
-
-    private static string nanString(bool sign, bool isSignaling, ulong payloadHi, ulong payloadLo)
-    {
-        if ((payloadHi | payloadLo) == 0 ||
-            // non canonical IEEE 754-2019 3.5.2 c) 2)
-            MAX_PAYLOAD_HI < payloadHi ||
-            (payloadHi == MAX_PAYLOAD_HI && MAX_PAYLOAD_LO < payloadLo))
-        {
-            // interned, so a bare NaN costs nothing
-            if (!isSignaling)
-                return (sign) ? "-NaN" : "NaN";
-            return (sign) ? "-sNaN" : "sNaN";
-        }
         Span<byte> ascii = stackalloc byte[MaxLen];
-        int n = nanBytes(ascii, sign, isSignaling, payloadHi, payloadLo);
-        return Encoding.Latin1.GetString(ascii[..n]);
-    }
-
-    private static readonly string[] ZEROS =
-    [
-        "0", "0.0", "0.00", "0.000", "0.0000", "0.00000", "0.000000", "",
-        "-0", "-0.0", "-0.00", "-0.000", "-0.0000", "-0.00000", "-0.000000", "",
-    ];
-
-    private static string zerString(bool sign, int qExp)
-    {
-        if (qExp <= 0 && qExp >= -6)
-        {
-            // Interned, so a plain-form zero costs nothing. The doubled table
-            // is deliberate here in a way it is not in the byte renderers: it
-            // returns a constant rather than feeding a copy, and the mask lets
-            // the JIT drop the bounds check.
-            int signBit = (sign) ? 1 : 0;
-            int index = -qExp + (signBit << 3);
-            return ZEROS[index & 0x0F];
-        }
-        Span<byte> ascii = stackalloc byte[MaxLen];
-        int n = zerBytes(ascii, sign, qExp);
-        return Encoding.Latin1.GetString(ascii[..n]);
-    }
-
-    /// <summary>
-    /// Format a finite non-zero value, dispatching to one of three forms based
-    /// on the quantum exponent and the value's magnitude:
-    /// integer notation when <c>qExp == 0</c>; fixed-point notation with a
-    /// radix point when the value would naturally express with at most 6
-    /// leading zeros after the point; normalized scientific notation otherwise.
-    /// </summary>
-    /// <remarks>
-    /// The 6-zero threshold is the GDAS <c>to-scientific-string</c> rule, which
-    /// prefers fixed-point form near unity over scientific form.
-    /// </remarks>
-    private static string fnzString(bool sign, int qExp, ulong dw1, ulong dw0)
-    {
-        Span<byte> ascii = stackalloc byte[MaxLen];
-        int n = fnzBytes(ascii, sign, qExp, dw1, dw0);
+        int n = decodeDpd128toBytes(ascii, dpd128Hi, dpd128Lo);
         return Encoding.Latin1.GetString(ascii[..n]);
     }
 
     // ==================================================================
     // Rendering into a buffer
     //
-    // The renderers proper. Every form is produced here, into a span the caller
-    // owns. The string-returning peers above are thin wrappers: they
-    // short-circuit the three interned constants — "Infinity", a bare NaN and
-    // every plain-form zero — and otherwise render into a stackalloc and wrap
-    // it. That is one allocation, the string itself, where the earlier shape
-    // allocated an intermediate array as well.
+    // The renderers proper, and the only ones. Every form is produced here,
+    // into a span the caller owns; the two string entry points render into a
+    // stackalloc and wrap it, for one allocation -- the string itself.
+    //
+    // A set of string-returning peers used to sit above these to short-circuit
+    // three interned constants — "Infinity", a bare NaN and every plain-form
+    // zero, all of which cost nothing to return. Keeping them meant a second
+    // copy of the field extraction and class dispatch per encoding, kept in
+    // step only by the corpus running both forms past the same expected text.
+    // One renderer per encoding is worth more than the constants; those three
+    // cases now allocate a string like every other.
     //
     // None of the optional leading characters live in the string data. The
     // sign, and the 's' that marks a signaling NaN, are each written

@@ -104,7 +104,7 @@ repo comes from the shared corpus.** There is no hand-written table, and nothing
 reaches past the four public methods.
 
 The default `dotnet test` is a Debug build, so `VERIFY_ENABLED` is on and every
-internal-state assertion runs over all 86,126 rows. CI runs Release as well,
+internal-state assertion runs over all 87k rows. CI runs Release as well,
 which proves the codec does not depend on those assertions for its answers.
 
 The repo is standalone: it depends on no decimal128 port, at runtime or in

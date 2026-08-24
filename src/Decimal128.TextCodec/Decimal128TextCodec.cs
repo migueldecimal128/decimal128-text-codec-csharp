@@ -35,7 +35,7 @@
 //    release consumer never takes a throw inside a library on data they do not
 //    control. `demand` stays live in every configuration.
 //
-// Everything reachable from outside is the four methods on the class below.
+// Everything reachable from outside is the methods on the class below.
 
 using System;
 using System.Diagnostics;
@@ -86,7 +86,7 @@ namespace Decimal128.TextCodec;
 /// instead.
 /// </para>
 /// <para>
-/// <b>Thread safety.</b> All four methods are pure and safe for concurrent use.
+/// <b>Thread safety.</b> All methods are pure and safe for concurrent use.
 /// </para>
 /// </remarks>
 public static class Decimal128TextCodec
@@ -123,7 +123,9 @@ public static class Decimal128TextCodec
     /// <returns>the decimal character sequence for <paramref name="bits"/>.</returns>
     public static string Bid128ToString(UInt128 bits)
     {
-        return decodeBid128toString(hiWord(bits), loWord(bits));
+        Span<byte> ascii = stackalloc byte[MaxLen];
+        int n = decodeBid128toBytes(ascii, hiWord(bits), loWord(bits));
+        return Encoding.Latin1.GetString(ascii[..n]);
     }
 
     /// <summary>
@@ -148,7 +150,9 @@ public static class Decimal128TextCodec
     /// <returns>the decimal character sequence for <paramref name="bits"/>.</returns>
     public static string Dpd128ToString(UInt128 bits)
     {
-        return decodeDpd128toString(hiWord(bits), loWord(bits));
+        Span<byte> ascii = stackalloc byte[MaxLen];
+        int n = decodeDpd128toBytes(ascii, hiWord(bits), loWord(bits));
+        return Encoding.Latin1.GetString(ascii[..n]);
     }
 
     /// <summary>
@@ -158,11 +162,11 @@ public static class Decimal128TextCodec
     /// <para>
     /// The widest scientific form <c>-9.999...E-6143</c> is 1 sign, 1 digit,
     /// 1 radix point, 33 digits, 1 <c>E</c>, 1 sign and 4 exponent digits; the
-    /// widest plain form <c>-0.000000999...</c> is 1 sign, 1 zero, 1 radix
-    /// point, 6 leading zeros and 34 digits. Both reach exactly 42.
+    /// widest plain form <c>-0.00000999...</c> is 1 sign, 1 zero, 1 radix
+    /// point, 5 leading zeros and 34 digits. Each form reaches exactly 42.
     /// </para>
     /// <para>
-    /// A buffer passed to <see cref="Bid128ToString(byte[], UInt128)"/> must be
+    /// A buffer passed to <see cref="Bid128ToAscii(byte[], UInt128)"/> must be
     /// at least this long. The same number, and the same meaning, as
     /// <c>MAX_LEN</c> in the Rust port, <c>MaxLen</c> in Go and <c>max_len</c>
     /// in Zig; the C port's <c>D128TEXT_MAX_LEN</c> is one larger because it
@@ -195,7 +199,7 @@ public static class Decimal128TextCodec
     /// <param name="destination">the destination, at least <see cref="MaxLen"/> bytes.</param>
     /// <param name="bits">the BID128 encoding.</param>
     /// <returns>the number of bytes written.</returns>
-    public static int Bid128ToString(byte[] destination, UInt128 bits)
+    public static int Bid128ToAscii(byte[] destination, UInt128 bits)
     {
         return decodeBid128toBytes(destination, hiWord(bits), loWord(bits));
     }
@@ -205,13 +209,13 @@ public static class Decimal128TextCodec
     /// nothing.
     /// </summary>
     /// <remarks>
-    /// The peer of <see cref="Bid128ToString(byte[], UInt128)"/>, with the same
+    /// The peer of <see cref="Bid128ToAscii(byte[], UInt128)"/>, with the same
     /// buffer contract and the same output for peer encodings of a value.
     /// </remarks>
     /// <param name="destination">the destination, at least <see cref="MaxLen"/> bytes.</param>
     /// <param name="bits">the DPD128 encoding.</param>
     /// <returns>the number of bytes written.</returns>
-    public static int Dpd128ToString(byte[] destination, UInt128 bits)
+    public static int Dpd128ToAscii(byte[] destination, UInt128 bits)
     {
         return decodeDpd128toBytes(destination, hiWord(bits), loWord(bits));
     }
@@ -409,41 +413,6 @@ public static class Decimal128TextCodec
     private const byte ascii_E = 0x45;
 
     // ==================================================================
-    // Decode: encoding -> text
-    // ==================================================================
-
-    /// <summary>
-    /// Decode a BID128 bit pattern to its decimal character sequence.
-    /// </summary>
-    /// <remarks>
-    /// Renders through <see cref="decodeBid128toBytes"/> into a stack buffer
-    /// and wraps the bytes it wrote. Field extraction, class dispatch and every
-    /// leaf renderer live there; this exists only to hand back a
-    /// <see cref="string"/>.
-    /// </remarks>
-    private static string decodeBid128toString(ulong bid128Hi, ulong bid128Lo)
-    {
-        Span<byte> ascii = stackalloc byte[MaxLen];
-        int n = decodeBid128toBytes(ascii, bid128Hi, bid128Lo);
-        return Encoding.Latin1.GetString(ascii[..n]);
-    }
-
-    /// <summary>
-    /// Decode a DPD128 bit pattern to its decimal character sequence.
-    /// </summary>
-    /// <remarks>
-    /// The peer of <see cref="decodeBid128toString"/>, and the same
-    /// arrangement: all the work is <see cref="decodeDpd128toBytes"/>; this
-    /// only wraps the bytes it wrote.
-    /// </remarks>
-    private static string decodeDpd128toString(ulong dpd128Hi, ulong dpd128Lo)
-    {
-        Span<byte> ascii = stackalloc byte[MaxLen];
-        int n = decodeDpd128toBytes(ascii, dpd128Hi, dpd128Lo);
-        return Encoding.Latin1.GetString(ascii[..n]);
-    }
-
-    // ==================================================================
     // Rendering into a buffer
     //
     // The renderers proper, and the only ones. Every form is produced here,
@@ -468,9 +437,14 @@ public static class Decimal128TextCodec
     private const byte ascii_s = 0x73;
 
     /// <summary>
-    /// The peer of <c>decodeBid128toString</c>, writing into the caller's
-    /// buffer. Identical field extraction; only the four leaf calls differ.
+    /// Render a BID128 encoding into the caller's buffer.
     /// </summary>
+    /// <remarks>
+    /// Field extraction follows IEEE 754-2019 §3.5.2; the class it lands on
+    /// — Infinity, NaN (quiet or signaling, with optional payload), zero
+    /// (canonical or non-canonical), or finite non-zero — picks the leaf
+    /// renderer. <see cref="Bid128ToString(UInt128)"/> wraps what this writes.
+    /// </remarks>
     private static int decodeBid128toBytes(Span<byte> ascii, ulong bid128Hi, ulong bid128Lo)
     {
         // IEEE754-2019 Table 3.6 -- Decimal interchange format parameters, p 23
@@ -540,9 +514,13 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// The peer of <c>decodeDpd128toString</c>, writing into the caller's
-    /// buffer. Identical field extraction; only the four leaf calls differ.
+    /// Render a DPD128 encoding into the caller's buffer.
     /// </summary>
+    /// <remarks>
+    /// The peer of <see cref="decodeBid128toBytes"/>: both reduce an encoding
+    /// to <c>(sign, qExp, coefficient)</c> and then dispatch to the same leaf
+    /// renderers, which have never seen an interchange format.
+    /// </remarks>
     private static int decodeDpd128toBytes(Span<byte> ascii, ulong dpd128Hi, ulong dpd128Lo)
     {
         const int w = 12;      // exponent continuation width

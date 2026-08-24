@@ -1,0 +1,24 @@
+## Build and output directories
+bin/
+obj/
+[Xx]64/
+[Xx]86/
+[Aa]rm/
+[Aa]rm64/
+
+## IDE and user settings
+.vs/
+.vscode/
+*.user
+*.userosscache
+*.sln.docstates
+
+## Resharper / Rider
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+## OS-generated files
+.DS_Store
+Thumbs.db
+*~

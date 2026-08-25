@@ -124,7 +124,7 @@ public static class Decimal128TextCodec
     public static string Bid128ToString(UInt128 bits)
     {
         Span<byte> ascii = stackalloc byte[MaxLen];
-        int n = decodeBid128toBytes(ascii, hiWord(bits), loWord(bits));
+        int n = decodeBid128toAscii(ascii, hiWord(bits), loWord(bits));
         return Encoding.Latin1.GetString(ascii[..n]);
     }
 
@@ -151,7 +151,7 @@ public static class Decimal128TextCodec
     public static string Dpd128ToString(UInt128 bits)
     {
         Span<byte> ascii = stackalloc byte[MaxLen];
-        int n = decodeDpd128toBytes(ascii, hiWord(bits), loWord(bits));
+        int n = decodeDpd128toAscii(ascii, hiWord(bits), loWord(bits));
         return Encoding.Latin1.GetString(ascii[..n]);
     }
 
@@ -201,7 +201,7 @@ public static class Decimal128TextCodec
     /// <returns>the number of bytes written.</returns>
     public static int Bid128ToAscii(byte[] destination, UInt128 bits)
     {
-        return decodeBid128toBytes(destination, hiWord(bits), loWord(bits));
+        return decodeBid128toAscii(destination, hiWord(bits), loWord(bits));
     }
 
     /// <summary>
@@ -217,7 +217,7 @@ public static class Decimal128TextCodec
     /// <returns>the number of bytes written.</returns>
     public static int Dpd128ToAscii(byte[] destination, UInt128 bits)
     {
-        return decodeDpd128toBytes(destination, hiWord(bits), loWord(bits));
+        return decodeDpd128toAscii(destination, hiWord(bits), loWord(bits));
     }
 
     /// <summary>
@@ -443,9 +443,10 @@ public static class Decimal128TextCodec
     /// Field extraction follows IEEE 754-2019 §3.5.2; the class it lands on
     /// — Infinity, NaN (quiet or signaling, with optional payload), zero
     /// (canonical or non-canonical), or finite non-zero — picks the leaf
-    /// renderer. <see cref="Bid128ToString(UInt128)"/> wraps what this writes.
+    /// renderer. <see cref="Bid128ToString(UInt128)"/> and
+    /// <see cref="Bid128ToAscii(byte[], UInt128)"/> both wrap what this writes.
     /// </remarks>
-    private static int decodeBid128toBytes(Span<byte> ascii, ulong bid128Hi, ulong bid128Lo)
+    private static int decodeBid128toAscii(Span<byte> ascii, ulong bid128Hi, ulong bid128Lo)
     {
         // IEEE754-2019 Table 3.6 -- Decimal interchange format parameters, p 23
         const int t = T_WIDTH; // trailing significand field width in bits
@@ -517,11 +518,11 @@ public static class Decimal128TextCodec
     /// Render a DPD128 encoding into the caller's buffer.
     /// </summary>
     /// <remarks>
-    /// The peer of <see cref="decodeBid128toBytes"/>: both reduce an encoding
+    /// The peer of <see cref="decodeBid128toAscii"/>: both reduce an encoding
     /// to <c>(sign, qExp, coefficient)</c> and then dispatch to the same leaf
     /// renderers, which have never seen an interchange format.
     /// </remarks>
-    private static int decodeDpd128toBytes(Span<byte> ascii, ulong dpd128Hi, ulong dpd128Lo)
+    private static int decodeDpd128toAscii(Span<byte> ascii, ulong dpd128Hi, ulong dpd128Lo)
     {
         const int w = 12;      // exponent continuation width
         const int t = T_WIDTH; // trailing significand field width in bits

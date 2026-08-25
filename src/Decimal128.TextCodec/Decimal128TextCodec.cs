@@ -243,9 +243,10 @@ public static class Decimal128TextCodec
     /// Writes the ASCII text into <c>destination</c> starting at index 0 and
     /// returns its length; the text is <c>destination[..n]</c>. No terminator
     /// is written. <c>destination</c> must have at least <c>MaxLen</c>
-    /// elements; a shorter one throws <c>IndexOutOfRangeException</c> on the
-    /// first write past its end rather than corrupting anything, so an
-    /// undersized buffer is a caller bug that surfaces immediately.
+    /// elements; <c>null</c> throws <c>ArgumentNullException</c>, and a shorter
+    /// one throws <c>IndexOutOfRangeException</c> on the first write past its
+    /// end rather than corrupting anything, so an undersized buffer is a caller
+    /// bug that surfaces immediately.
     /// </para>
     ///
     /// <para>
@@ -269,6 +270,7 @@ public static class Decimal128TextCodec
     /// <returns>the number of bytes written.</returns>
     public static int Bid128ToAscii(byte[] destination, UInt128 bits)
     {
+        ArgumentNullException.ThrowIfNull(destination);
         return decodeBid128toAscii(destination, hiWord(bits), loWord(bits));
     }
 
@@ -281,9 +283,10 @@ public static class Decimal128TextCodec
     /// Writes the ASCII text into <c>destination</c> starting at index 0 and
     /// returns its length; the text is <c>destination[..n]</c>. No terminator
     /// is written. <c>destination</c> must have at least <c>MaxLen</c>
-    /// elements; a shorter one throws <c>IndexOutOfRangeException</c> on the
-    /// first write past its end rather than corrupting anything, so an
-    /// undersized buffer is a caller bug that surfaces immediately.
+    /// elements; <c>null</c> throws <c>ArgumentNullException</c>, and a shorter
+    /// one throws <c>IndexOutOfRangeException</c> on the first write past its
+    /// end rather than corrupting anything, so an undersized buffer is a caller
+    /// bug that surfaces immediately.
     /// </para>
     ///
     /// <para>
@@ -307,6 +310,7 @@ public static class Decimal128TextCodec
     /// <returns>the number of bytes written.</returns>
     public static int Dpd128ToAscii(byte[] destination, UInt128 bits)
     {
+        ArgumentNullException.ThrowIfNull(destination);
         return decodeDpd128toAscii(destination, hiWord(bits), loWord(bits));
     }
 
@@ -2109,6 +2113,8 @@ public static class Decimal128TextCodec
         while (rest != 0)
         {
             bin += dpdDecodeDeclet(rest & 0x3FF) * multiplier;
+            // The last iteration multiplies past 10^18 and the product is never
+            // used, since rest is zero by then. The reference wraps here too.
             multiplier *= 1000;
             rest >>= 10;
         }

@@ -1,46 +1,10 @@
 // SPDX-License-Identifier: MIT
 //
-// decimal128-text-codec-csharp
-//
-// Ported from decimal128-text-codec-swift, which is itself a port of
-// decimal128-text-codec-kotlin -- the reference implementation for the family.
-// Swift is the closer base for this port because it answered the same question
-// first: what the file looks like when the language has a native 128-bit
-// unsigned integer and unsigned words, rather than the reference's pair of
-// signed `Long`s. The shape follows both closely enough to read side by side;
-// where C# differs, the difference is noted at the point it occurs. The four
-// deliberate ones:
-//
-//  - The public boundary is `UInt128`, as in Swift. A caller holds one value
-//    rather than two words plus a convention about which is which. The
-//    internals still work in `dw1`/`dw0` `ulong` pairs, exactly as the
-//    reference does: the split happens once on entry and the join once on exit.
-//
-//  - C# arithmetic wraps by default, as Kotlin's does, so the sites where the
-//    reference relies on wrapping are plain operators here. Each still carries
-//    the note saying why the wrap is the intended arithmetic. The Swift port
-//    reaches the same semantics from the other side, spelling every operator
-//    `&+` / `&*` because Swift traps by default.
-//
-//  - Integer-to-text goes through `CultureInfo.InvariantCulture` at the two
-//    places this file formats an integer with the runtime rather than by hand.
-//    `int.ToString()` is culture-sensitive in .NET, and a negative-number
-//    format that uses U+2212 rather than `-` would produce a numeral this
-//    codec's own parser rejects. No other port has a culture to pin.
-//
-//  - `verify` is `[Conditional("VERIFY_ENABLED")]`, the same contract the full
-//    decimal128-csharp port uses: the call AND its argument expressions are
-//    dropped by the compiler unless the symbol is defined. The csproj defines
-//    it for Debug only, exactly as the Swift port's Package.swift does, so a
-//    release consumer never takes a throw inside a library on data they do not
-//    control. `demand` stays live in every configuration.
-//
 // Everything reachable from outside is the methods on the class below.
 
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Text;

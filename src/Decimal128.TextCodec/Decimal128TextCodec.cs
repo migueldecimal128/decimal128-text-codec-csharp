@@ -596,6 +596,9 @@ public static class Decimal128TextCodec
     // into a span the caller owns; the two string entry points render into a
     // stackalloc and wrap it, for one allocation -- the string itself.
     //
+    // These leaf renderers know nothing about BID or DPD: both decoders
+    // reduce an encoding to (sign, qExp, coefficient) and hand it here.
+    //
     // A set of string-returning peers used to sit above these to short-circuit
     // three interned constants — "Infinity", a bare NaN and every plain-form
     // zero, all of which cost nothing to return. Keeping them meant a second
@@ -882,11 +885,6 @@ public static class Decimal128TextCodec
     /// Format a finite non-zero value with <c>qExp == 0</c> as a plain integer
     /// sequence: no radix point, no exponent.
     /// </summary>
-    /// <remarks>
-    /// Fast path: when the value fits in a non-negative <c>long</c>, defer to
-    /// the runtime's integer formatting. General path: render via
-    /// <see cref="u128ToAscii"/> into a buffer sized exactly to the result.
-    /// </remarks>
     private static int fnzToIntegerBytes(Span<byte> ascii, bool sign, int digitLen, ulong dw1, ulong dw0)
     {
         verify(digitLen > 0);
@@ -1906,7 +1904,7 @@ public static class Decimal128TextCodec
     private static Words finalizeUnderflowRegion(bool formatIsBid, bool sign, int qExp,
                                                  ulong dw1, ulong dw0, int residue)
     {
-        // IEEE 754 7.5 Underflow - handle subnormal region
+        // IEEE 754-2019 7.5 Underflow -- the subnormal region
         verify(qExp < Q_MIN);
         int truncationNeeded = Q_MIN - qExp;
         int digitLen = calcDigitLen128(dw1, dw0);
@@ -2143,8 +2141,9 @@ public static class Decimal128TextCodec
     /// Decode a 10-bit DPD declet into <c>0..999</c>.
     /// </summary>
     /// <remarks>
-    /// Mapping: bit9..bit0 as <c>p q r s t u v w x y</c>. Handles non-canonical
-    /// declets as well as canonical ones, per Cowlishaw's dpd2bcd.
+    /// Mapping: bit9..bit0 as <c>p q r s t u v w x y</c>. Accepts the 24
+    /// non-canonical declets as well as the 1000 canonical ones, per
+    /// Cowlishaw's dpd2bcd.
     /// </remarks>
     private static ulong dpdDecodeDeclet(ulong declet)
     {
@@ -2263,9 +2262,17 @@ public static class Decimal128TextCodec
     /// <summary>
     /// Powers of 10 from <c>10^0</c> through <c>10^34</c> as 128-bit values in
     /// little-endian order: <c>POW10[2*i]</c> is the low 64 bits and
-    /// <c>POW10[2*i + 1]</c> the high 64 bits of <c>10^i</c>. Sized to the
-    /// decimal128 coefficient bound.
+    /// <c>POW10[2*i + 1]</c> the high 64 bits of <c>10^i</c>.
     /// </summary>
+    /// <remarks>
+    /// Sized to the coefficient bound and indexed directly — no mask, no
+    /// padding. Every reachable index is at most 34: the binding case is
+    /// <see cref="calcDigitLen128"/>, whose input is always a coefficient or
+    /// NaN payload below <c>10^34</c>, so <c>bitLen &lt;= 113</c> and
+    /// <c>(bitLen * 1233) &gt;&gt; 12 &lt;= 34</c>. It doubles as the
+    /// <c>5^n</c> source for the divide kernel, since <c>10^n &gt;&gt; n</c>
+    /// is exactly <c>5^n</c>; there is no POW5 table.
+    /// </remarks>
     private static readonly ulong[] POW10 =
     [
         // little-endian order
@@ -2378,18 +2385,10 @@ public static class Decimal128TextCodec
     /// in <c>1..9</c>, returning the quotient and the remainder.
     /// </summary>
     /// <remarks>
-    /// <para>
     /// Table-free: <c>10^pow10</c> factors as <c>2^pow10 * 5^pow10</c>, so the
     /// low <c>pow10</c> bits fall straight out as the low part of the remainder
     /// and the shifted value is divided by <c>5^pow10</c> with two hardware
     /// 64-bit divides.
-    /// </para>
-    /// <para>
-    /// Not directly covered by the tests. The shared corpus barely reaches it —
-    /// measured on the reference, the two render suites call it zero times and
-    /// the parse suite reaches it 20 times across five of its nine powers — so
-    /// the suite can be green with this kernel substantially wrong.
-    /// </para>
     /// </remarks>
     private static (ulong qHi, ulong qLo, ulong rem) u113DivModPow10Max9(ulong dwHi, ulong dwLo, int pow10)
     {

@@ -93,7 +93,7 @@ namespace Decimal128.TextCodec;
 /// </para>
 ///
 /// <para>
-/// <b>In this port.</b> The renderers return a <c>string</c>; their
+/// <b>This implementation.</b> The renderers return a <c>string</c>; their
 /// <c>Bid128ToAscii</c> and <c>Dpd128ToAscii</c> peers write into a
 /// caller-owned <c>byte[]</c> and return a length, for callers who want no
 /// allocation. The parsers write through an <c>out</c> encoding and return
@@ -227,9 +227,8 @@ public static class Decimal128TextCodec
     /// </para>
     ///
     /// <para>
-    /// A buffer passed to <c>Bid128ToAscii</c> must be at least this long. The
-    /// C port's <c>D128TEXT_MAX_LEN</c> is one larger, because it writes a NUL
-    /// and this does not.
+    /// A buffer passed to <c>Bid128ToAscii</c> must be at least this long. No
+    /// NUL is written, so no room is reserved for one.
     /// </para>
     /// </remarks>
     public const int MaxLen = 42;
@@ -485,8 +484,8 @@ public static class Decimal128TextCodec
     // ------------------------------------------------------------------
     // Internal-state assertions
     //
-    // Two mechanisms, and the split matters here for the same reason it does in
-    // the C and Swift ports.
+    // Two mechanisms: one is a debugging aid, the other guards a write into a
+    // caller's buffer.
     //
     //   verify   internal-consistency claims -- unreachable for ANY input, so a
     //            failure is a codec bug rather than bad data. [Conditional]
@@ -499,9 +498,9 @@ public static class Decimal128TextCodec
     //            encode. Live in every configuration, because the alternative
     //            is silently encoding an out-of-range value.
     //
-    // Both route through `impossible`, which throws. The full decimal128-csharp
-    // port maps `impossible` to Environment.FailFast; a codec is a leaf library
-    // a caller embeds, so it raises rather than taking the process down.
+    // Both route through `impossible`, which throws rather than calling
+    // Environment.FailFast: a codec is a leaf library a caller embeds, so it
+    // raises rather than taking the process down.
     // ------------------------------------------------------------------
 
     [Conditional("VERIFY_ENABLED")]
@@ -529,8 +528,7 @@ public static class Decimal128TextCodec
     // The 128-bit boundary
     //
     // Public in, public out. Everything between these and the encoders works in
-    // the reference's `dw1` / `dw0` word pair, which is what makes the files
-    // readable side by side.
+    // a `dw1` / `dw0` word pair.
     // ------------------------------------------------------------------
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -557,13 +555,12 @@ public static class Decimal128TextCodec
     /// The trailing-significand mask for the high word.
     /// </summary>
     /// <remarks>
-    /// The reference writes this as <c>(1L shl t) - 1L</c> with <c>t == 110</c>
-    /// and leans on the JVM masking shift counts to 6 bits, which turns it into
-    /// <c>(1 shl 46) - 1</c>. C# masks its shift counts the same way, so the
-    /// reference's spelling would work here -- but it works by accident, and
-    /// the Swift port had to spell the intended 46-bit mask out because Swift's
-    /// shift does not mask. Spelled out here too, so all three files agree on
-    /// what was meant.
+    /// Written directly as <c>(1 shl 110) - 1</c> this would lean on shift
+    /// counts being masked to 6 bits, turning it into <c>(1 shl 46) - 1</c>.
+    /// C# does mask its shift counts, so that spelling would work here -- but
+    /// it would work by accident.
+    /// The intended 46-bit mask is spelled out instead, so the code says what
+    /// was meant.
     /// </remarks>
     private const ulong COEFF_T_HI_MASK = (1UL << (110 - 64)) - 1;
 
@@ -767,7 +764,7 @@ public static class Decimal128TextCodec
         {
             // binHi * 10^18 + binLo is a genuine 128-bit product: the low word
             // is the wrapping sum, and the carry out of it feeds the high word.
-            // (Swift spells these `&*` and `&+`; C# wraps by default.)
+            // (C# wraps by default in an unchecked context.)
             dw0 = (binHi * TEN_POW_18) + binLo;
             ulong carry = (dw0 < binLo) ? 1UL : 0UL;
             dw1 = unsignedMulHi(binHi, TEN_POW_18) + carry;
@@ -942,7 +939,7 @@ public static class Decimal128TextCodec
     {
         verify(digitLen > 0);
         int eExp = qExp + (digitLen - 1);
-        // the reference computes this branchlessly off a 32-bit sign shift; the
+        // this can be computed branchlessly off a 32-bit sign shift; the
         // exponent is bounded well inside an int, so say it directly
         int eExpAbs = (eExp < 0) ? -eExp : eExp;
         int signLen = (sign) ? 1 : 0;
@@ -1186,33 +1183,27 @@ public static class Decimal128TextCodec
     private const byte ascii_rparen = 0x29;
 
     /// <summary>
-    /// Read the character at <paramref name="pos"/> and advance, or return NUL
-    /// at end of input.
+    /// The code of the character at <paramref name="index"/>, or -1 past the
+    /// end of the string.
     /// </summary>
     /// <remarks>
-    /// The reference reads a Kotlin <c>String</c> through a <c>getOrNul</c>
-    /// accessor that yields NUL forever past the end, and a .NET
-    /// <see cref="string"/> is randomly indexable the same way, so this is the
-    /// reference's shape rather than the Swift port's — Swift has to hand the
-    /// parser a UTF-8 byte array because its strings are not integer-indexable.
-    /// Every character a numeral can contain is ASCII, so a non-ASCII code unit
-    /// fails every test below and is rejected as an unrecognized character,
-    /// which is the same answer every port gives.
+    /// The parsers walk the input as character codes, so end-of-input is one
+    /// more code value rather than a bound test at every read. -1 is not a
+    /// character, which keeps NUL an ordinary input character — and an invalid
+    /// one — instead of doubling as the terminator. A .NET
+    /// <see cref="string"/> is randomly indexable, so the parsers walk it by
+    /// index rather than through a cursor. Every character a numeral can
+    /// contain is ASCII, so a non-ASCII code unit fails every test below and is
+    /// rejected as an unrecognized character.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static char chAt(string str, ref int pos)
+    private static int codeAt(string str, int index)
     {
-        if (pos < str.Length)
-        {
-            char c = str[pos];
-            pos += 1;
-            return c;
-        }
-        return '\0';
+        return (index >= 0 && index < str.Length) ? str[index] : -1;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool isDigit(char ch) => (ch >= ascii_0 && ch <= ascii_9);
+    private static bool isDigit(int ch) => (ch >= ascii_0 && ch <= ascii_9);
 
     /// <summary>
     /// Top-level dispatcher. Reads an optional sign, then dispatches by leading
@@ -1225,11 +1216,11 @@ public static class Decimal128TextCodec
     private static string? encodeStringOrError(ref Words outWords, bool formatIsBid, string str)
     {
         int pos = 0;
-        char chFirst = chAt(str, ref pos);
-        char ch = chFirst;
+        int chFirst = codeAt(str, pos++);
+        int ch = chFirst;
         bool sign = (ch == ascii_minus);
         if (ch == ascii_plus || ch == ascii_minus)
-            ch = chAt(str, ref pos);
+            ch = codeAt(str, pos++);
         if (isDigit(ch) || ch == ascii_dot)
             return parseFiniteValueText(ref outWords, formatIsBid, sign, ch, str, pos);
         int chLower = ch | 0x20;
@@ -1237,7 +1228,7 @@ public static class Decimal128TextCodec
             return parseInfinityText(ref outWords, sign, ch, str, pos);
         if (chLower == 'n' || chLower == 's' || chLower == 'q')
             return parseNanText(ref outWords, formatIsBid, sign, ch, str, pos);
-        if (chFirst == '\0')
+        if (chFirst == -1)
             return "empty string";
         return "invalid format";
     }
@@ -1246,10 +1237,10 @@ public static class Decimal128TextCodec
     /// Parse the keyword <c>Infinity</c>, or its 3-letter abbreviation
     /// <c>Inf</c>, case-insensitively.
     /// </summary>
-    private static string? parseInfinityText(ref Words outWords, bool sign, char chFirst, string str, int startPos)
+    private static string? parseInfinityText(ref Words outWords, bool sign, int chFirst, string str, int startPos)
     {
         int pos = startPos;
-        char ch = chFirst;
+        int ch = chFirst;
         int chPrevCode = 0;
         const string target = "infinity";
         for (int i = 0; i < 8; ++i)
@@ -1257,15 +1248,15 @@ public static class Decimal128TextCodec
             int targetCode = target[i];
             if ((ch | 0x20) != targetCode)
             {
-                if (ch == '\0')
+                if (ch == -1)
                     break;
                 else
                     return "failure parsing infinity";
             }
             chPrevCode = ch | 0x20;
-            ch = chAt(str, ref pos);
+            ch = codeAt(str, pos++);
         }
-        if (ch != '\0' || (chPrevCode != 'f' && chPrevCode != 'y'))
+        if (ch != -1 || (chPrevCode != 'f' && chPrevCode != 'y'))
             return "failure parsing Infinity";
         outWords = (INF_PATTERN_HI | (sign ? SIGN_BIT : 0), 0);
         return null;
@@ -1290,8 +1281,7 @@ public static class Decimal128TextCodec
     /// not this form at all.
     /// </para>
     /// <para>
-    /// The full decimal128 ports accept the same spelling; the codecs had it
-    /// first, and the ports took it on 2026-08-23. The reason it exists at all
+    /// The reason this spelling exists at all
     /// is that C's own <c>strtod</c> reads <c>NAN(n-char-sequence)</c>, so the
     /// spelling reaches a caller from the platform itself. The resemblance
     /// stops at the parentheses — strtod's sequence is letters, digits and
@@ -1307,27 +1297,27 @@ public static class Decimal128TextCodec
     /// </para>
     /// </remarks>
     private static string? parseNanText(ref Words outWords, bool formatIsBid, bool sign,
-                                        char chFirst, string str, int startPos)
+                                        int chFirst, string str, int startPos)
     {
         int pos = startPos;
-        char ch = chFirst;
+        int ch = chFirst;
         bool hasS = ((ch | 0x20) == 's');
         bool hasQ = ((ch | 0x20) == 'q');
         if (hasQ || hasS)
-            ch = chAt(str, ref pos);
+            ch = codeAt(str, pos++);
         if ((ch | 0x20) != 'n' ||
-            (chAt(str, ref pos) | 0x20) != 'a' ||
-            (chAt(str, ref pos) | 0x20) != 'n')
+            (codeAt(str, pos++) | 0x20) != 'a' ||
+            (codeAt(str, pos++) | 0x20) != 'n')
         {
             return "failure parsing NaN";
         }
         ulong payloadDw0 = 0;
         ulong payloadDw1 = 0;
-        ch = chAt(str, ref pos);
+        ch = codeAt(str, pos++);
         bool hasParen = (ch == ascii_lparen);
         if (hasParen)
-            ch = chAt(str, ref pos);
-        if (hasParen || ch != '\0')
+            ch = codeAt(str, pos++);
+        if (hasParen || ch != -1)
         {
             int accumDigitCount = 0;
             ulong accum19a = 0;
@@ -1349,13 +1339,13 @@ public static class Decimal128TextCodec
                 }
                 else
                 {
-                    // Wrapping on purpose (Swift spells this `&*` / `&+`).
+                    // Wrapping on purpose.
                     // Within the 33-digit limit this holds at most 14 digits and
                     // cannot wrap; past the limit it can, and the whole payload
                     // is discarded below, so the wrapped value is never read.
                     accum19b = (accum19b * 10) + d;
                 }
-                ch = chAt(str, ref pos);
+                ch = codeAt(str, pos++);
             }
             if (accumDigitCount == 0)
                 return (hasParen) ? "failure parsing NaN" : "non-digit NaN payload character";
@@ -1363,11 +1353,11 @@ public static class Decimal128TextCodec
             {
                 // the ')' must be present and must end the input
                 if (ch != ascii_rparen)
-                    return (ch == '\0') ? "failure parsing NaN" : "non-digit NaN payload character";
-                if (chAt(str, ref pos) != '\0')
+                    return (ch == -1) ? "failure parsing NaN" : "non-digit NaN payload character";
+                if (codeAt(str, pos++) != -1)
                     return "failure parsing NaN";
             }
-            else if (ch != '\0')
+            else if (ch != -1)
             {
                 return "non-digit NaN payload character";
             }
@@ -1416,7 +1406,7 @@ public static class Decimal128TextCodec
     /// </para>
     /// </remarks>
     private static string? parseFiniteValueText(ref Words outWords, bool formatIsBid, bool sign,
-                                                char chFirst, string str, int startPos)
+                                                int chFirst, string str, int startPos)
     {
         int pos = startPos;
         int residue = EXACT;
@@ -1430,8 +1420,8 @@ public static class Decimal128TextCodec
         bool prevWasDigit = false;
         bool afterUnderscore = false;
 
-        verify(chFirst != '\0');
-        char ch = chFirst;
+        verify(chFirst != -1);
+        int ch = chFirst;
         int fractionalDigitCount = 0;
         ulong accum19a = 0;
         ulong accum19b = 0;
@@ -1443,9 +1433,8 @@ public static class Decimal128TextCodec
             {
                 int d = ch - ascii_0;
                 hasCoefficientDigit = true;
-                // count while flushing leading zeros. The reference does this
-                // branchlessly off a 32-bit sign shift; said directly here, as
-                // the Swift port says it.
+                // count while flushing leading zeros. This can be done
+                // branchlessly off a 32-bit sign shift; said directly here.
                 if (significantDigitCount != 0 || d != 0)
                     significantDigitCount += 1;
                 if (significantDigitCount <= 19)
@@ -1487,7 +1476,7 @@ public static class Decimal128TextCodec
                 hasDot = true;
                 prevWasDigit = false;
             }
-            ch = chAt(str, ref pos);
+            ch = codeAt(str, pos++);
         }
         if (afterUnderscore)
             return "invalid underscore location";
@@ -1496,11 +1485,11 @@ public static class Decimal128TextCodec
         // this path has at least one digit
         if (ch == ascii_E || ch == ascii_e)
         {
-            ch = chAt(str, ref pos);
+            ch = codeAt(str, pos++);
             if (ch == ascii_plus || ch == ascii_minus)
             {
                 expSign = (ch == ascii_minus);
-                ch = chAt(str, ref pos);
+                ch = codeAt(str, pos++);
             }
             bool hasExpDigit = false;
             int expSignificantDigitCount = 0;
@@ -1522,7 +1511,7 @@ public static class Decimal128TextCodec
                     // count while flushing leading zeros
                     if (expSignificantDigitCount != 0 || eDigit != 0)
                         expSignificantDigitCount += 1;
-                    // Wrapping on purpose (Swift spells this `&*` / `&+`): the
+                    // Wrapping on purpose: the
                     // clamp below discards `exp` entirely once more than 4
                     // significant digits were written, which is strictly before
                     // it could wrap.
@@ -1530,7 +1519,7 @@ public static class Decimal128TextCodec
                     prevWasDigit = true;
                     afterUnderscore = false;
                 }
-                ch = chAt(str, ref pos);
+                ch = codeAt(str, pos++);
             }
             if (afterUnderscore)
                 return "invalid underscore location";
@@ -1540,7 +1529,7 @@ public static class Decimal128TextCodec
             if (expSignificantDigitCount > 4)
                 exp = 9999;
         }
-        if (ch != '\0')
+        if (ch != -1)
             return "unexpected char";
         // we have at least one digit
         ulong dw0 = accum19a;
@@ -1783,8 +1772,8 @@ public static class Decimal128TextCodec
         // never once executed -- and therefore has never been verified to work
         // -- it is removed and the invariant is enforced.
         //
-        // Measured on the C port, which is a translation of the same reference:
-        // zero executions across the 87k-row shared corpus, 400,000 random
+        // Measured: zero executions across the 87k-row shared corpus,
+        // 400,000 random
         // numerals, and 76,280 finalize calls driven by inputs of up to 5,000
         // digits, where the widest coefficient ever seen here was 34.
         //
@@ -1793,8 +1782,8 @@ public static class Decimal128TextCodec
         // out-of-range coefficient silently. It cannot fire on a caller's data
         // -- no input reaches it -- only on a future caller that breaks the
         // invariant, which is exactly when a loud failure is wanted. A caller
-        // that is not a parser needs the truncation step back; it is live in
-        // every full port's Finalize, where multiply and FMA do reach it.
+        // that is not a parser needs the truncation step back, as a multiply
+        // or an FMA would.
         demand(calcDigitLen128(dw1In, dw0In) <= 34, "coefficient wider than precision");
 
         // Step 4: underflow. With no precision truncation to outrank it, the
@@ -1811,7 +1800,7 @@ public static class Decimal128TextCodec
         bool applyRounding = (totalResidue == GT_HALF || (totalResidue == HALF && (dw0 & 1) != 0));
         if (applyRounding)
         {
-            // step 6.1: increment. Wrapping on purpose (Swift spells this `&+`):
+            // step 6.1: increment. Wrapping on purpose:
             // a coefficient of 0xFFFF...FFFF in the low word carries into the
             // high word, which is exactly what the two statements compute.
             dw0 = dw0 + 1;
@@ -1881,7 +1870,7 @@ public static class Decimal128TextCodec
         ulong y1 = POW10[pow10Offset + 1];
         ulong y0 = POW10[pow10Offset];
         // A 128x128 product truncated to 128 bits: each partial product below
-        // wraps by construction (Swift spells them `&*` / `&+`), and the
+        // wraps by construction, and the
         // discarded halves are known zero because the caller checked the result
         // fits in 34 digits.
         ulong pp00Hi = unsignedMulHi(dw0, y0);
@@ -2092,9 +2081,8 @@ public static class Decimal128TextCodec
     // a binary integer, DPD as a leading digit plus eleven declets.
     //
     // Both directions are pure boolean arithmetic -- Cowlishaw's dpd2bcd and
-    // bcd2dpd -- rather than lookup tables, which is what the reference measured
-    // as the smaller and faster choice and what transcribes unchanged into the
-    // sibling ports.
+    // bcd2dpd -- rather than lookup tables, measured as the smaller and faster
+    // choice.
     // ==================================================================
 
     /// <summary>
@@ -2114,7 +2102,7 @@ public static class Decimal128TextCodec
         {
             bin += dpdDecodeDeclet(rest & 0x3FF) * multiplier;
             // The last iteration multiplies past 10^18 and the product is never
-            // used, since rest is zero by then. The reference wraps here too.
+            // used, since rest is zero by then, so it is let wrap.
             multiplier *= 1000;
             rest >>= 10;
         }
@@ -2360,9 +2348,9 @@ public static class Decimal128TextCodec
     /// High 64 bits of the 128-bit product <c>x * y</c>.
     /// </summary>
     /// <remarks>
-    /// The reference decomposes this into four 32x32 partial products because
-    /// the JVM has no unsigned 64-bit multiply-high; .NET has one, and the JIT
-    /// turns it into the machine's widening multiply.
+    /// Where no unsigned 64-bit multiply-high exists this decomposes into four
+    /// 32x32 partial products; .NET has one, and the JIT turns it into the
+    /// machine's widening multiply.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong unsignedMulHi(ulong x, ulong y)

@@ -322,8 +322,11 @@ public static class Decimal128TextCodec
     /// <c>value</c>. On failure returns a human-readable message and writes
     /// the canonical positive quiet NaN, so a caller who discards the message
     /// still observes a legal IEEE 754-2019 datum rather than a stale value.
-    /// The exact wording of the message is not part of the contract and may
-    /// change between versions.
+    /// The message is the engine's ParseStatus name for the failure --
+    /// EMPTY_STRING, INVALID_FORMAT, UNEXPECTED_CHAR, DOUBLE_DOT,
+    /// NO_COEFFICIENT_DIGIT, NO_EXPONENT_DIGIT, INVALID_UNDERSCORE_LOCATION,
+    /// FAILURE_PARSING_INFINITY or FAILURE_PARSING_NAN -- and the conformance
+    /// suite asserts it against the shared corpus, so it is part of the contract.
     /// </para>
     ///
     /// <para>
@@ -406,8 +409,11 @@ public static class Decimal128TextCodec
     /// <c>value</c>. On failure returns a human-readable message and writes
     /// the canonical positive quiet NaN, so a caller who discards the message
     /// still observes a legal IEEE 754-2019 datum rather than a stale value.
-    /// The exact wording of the message is not part of the contract and may
-    /// change between versions.
+    /// The message is the engine's ParseStatus name for the failure --
+    /// EMPTY_STRING, INVALID_FORMAT, UNEXPECTED_CHAR, DOUBLE_DOT,
+    /// NO_COEFFICIENT_DIGIT, NO_EXPONENT_DIGIT, INVALID_UNDERSCORE_LOCATION,
+    /// FAILURE_PARSING_INFINITY or FAILURE_PARSING_NAN -- and the conformance
+    /// suite asserts it against the shared corpus, so it is part of the contract.
     /// </para>
     ///
     /// <para>
@@ -1229,8 +1235,8 @@ public static class Decimal128TextCodec
         if (chLower == 'n' || chLower == 's' || chLower == 'q')
             return parseNanText(ref outWords, formatIsBid, sign, ch, str, pos);
         if (chFirst == -1)
-            return "empty string";
-        return "invalid format";
+            return "EMPTY_STRING";
+        return "INVALID_FORMAT";
     }
 
     /// <summary>
@@ -1251,13 +1257,13 @@ public static class Decimal128TextCodec
                 if (ch == -1)
                     break;
                 else
-                    return "failure parsing Infinity";
+                    return "FAILURE_PARSING_INFINITY";
             }
             chPrevCode = ch | 0x20;
             ch = codeAt(str, pos++);
         }
         if (ch != -1 || (chPrevCode != 'f' && chPrevCode != 'y'))
-            return "failure parsing Infinity";
+            return "FAILURE_PARSING_INFINITY";
         outWords = (INF_PATTERN_HI | (sign ? SIGN_BIT : 0), 0);
         return null;
     }
@@ -1309,7 +1315,7 @@ public static class Decimal128TextCodec
             (codeAt(str, pos++) | 0x20) != 'a' ||
             (codeAt(str, pos++) | 0x20) != 'n')
         {
-            return "failure parsing NaN";
+            return "FAILURE_PARSING_NAN";
         }
         ulong payloadDw0 = 0;
         ulong payloadDw1 = 0;
@@ -1348,18 +1354,18 @@ public static class Decimal128TextCodec
                 ch = codeAt(str, pos++);
             }
             if (accumDigitCount == 0)
-                return (hasParen) ? "failure parsing NaN" : "non-digit NaN payload character";
+                return (hasParen) ? "FAILURE_PARSING_NAN" : "FAILURE_PARSING_NAN";
             if (hasParen)
             {
                 // the ')' must be present and must end the input
                 if (ch != ascii_rparen)
-                    return (ch == -1) ? "failure parsing NaN" : "non-digit NaN payload character";
+                    return (ch == -1) ? "FAILURE_PARSING_NAN" : "FAILURE_PARSING_NAN";
                 if (codeAt(str, pos++) != -1)
-                    return "failure parsing NaN";
+                    return "FAILURE_PARSING_NAN";
             }
             else if (ch != -1)
             {
-                return "non-digit NaN payload character";
+                return "FAILURE_PARSING_NAN";
             }
             if (accumDigitCount > 33)
             {
@@ -1463,25 +1469,25 @@ public static class Decimal128TextCodec
             else if (ch == ascii_underscore)
             {
                 if (!prevWasDigit)
-                    return "invalid underscore location";
+                    return "INVALID_UNDERSCORE_LOCATION";
                 prevWasDigit = false;
                 afterUnderscore = true;
             }
             else // '.'
             {
                 if (afterUnderscore)
-                    return "invalid underscore location";
+                    return "INVALID_UNDERSCORE_LOCATION";
                 if (hasDot)
-                    return "double radix dot";
+                    return "DOUBLE_DOT";
                 hasDot = true;
                 prevWasDigit = false;
             }
             ch = codeAt(str, pos++);
         }
         if (afterUnderscore)
-            return "invalid underscore location";
+            return "INVALID_UNDERSCORE_LOCATION";
         if (!hasCoefficientDigit)
-            return "no coefficient digit";
+            return "NO_COEFFICIENT_DIGIT";
         // this path has at least one digit
         if (ch == ascii_E || ch == ascii_e)
         {
@@ -1500,7 +1506,7 @@ public static class Decimal128TextCodec
                 if (ch == ascii_underscore)
                 {
                     if (!prevWasDigit)
-                        return "invalid underscore location";
+                        return "INVALID_UNDERSCORE_LOCATION";
                     prevWasDigit = false;
                     afterUnderscore = true;
                 }
@@ -1522,15 +1528,15 @@ public static class Decimal128TextCodec
                 ch = codeAt(str, pos++);
             }
             if (afterUnderscore)
-                return "invalid underscore location";
+                return "INVALID_UNDERSCORE_LOCATION";
             if (!hasExpDigit)
-                return "no exponent digit";
+                return "NO_EXPONENT_DIGIT";
             // clamp exp to 9999 once after the loop
             if (expSignificantDigitCount > 4)
                 exp = 9999;
         }
         if (ch != -1)
-            return "unexpected char";
+            return "UNEXPECTED_CHAR";
         // we have at least one digit
         ulong dw0 = accum19a;
         ulong dw1 = 0;

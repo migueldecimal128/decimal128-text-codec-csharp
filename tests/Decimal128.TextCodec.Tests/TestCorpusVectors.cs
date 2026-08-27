@@ -122,6 +122,8 @@ public class TestCorpusVectors
                 Assert.Fail($"error line {row.LineNumber}: dpd ACCEPTED <{row.Text}>, corpus says {row.Status}");
             if (b.Error != d.Error)
                 Assert.Fail($"error line {row.LineNumber}: the formats disagree on <{row.Text}>: <{b.Error}> vs <{d.Error}>");
+            if (b.Error != row.Status)
+                Assert.Fail($"error line {row.LineNumber}: <{row.Text}> returned <{b.Error}>, corpus says {row.Status}");
             if (b.Bits != row.Bid)
                 Assert.Fail($"error line {row.LineNumber}: bid <{row.Text}> left {Hex.Format32(b.Bits)}, expected {row.BidHex}");
             if (d.Bits != row.Bid)

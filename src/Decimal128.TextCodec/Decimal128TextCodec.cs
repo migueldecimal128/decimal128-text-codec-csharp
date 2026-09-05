@@ -220,10 +220,12 @@ public static class Decimal128TextCodec
     /// </para>
     ///
     /// <para>
-    /// Every write in the renderers is guarded against this bound. Sizing it
-    /// exactly rather than generously is what turns those guards into real
-    /// checks: with slack, an error in the arithmetic above would quietly
-    /// consume the slack instead of firing.
+    /// The renderers are checked against this bound once, on entry, rather
+    /// than at every write: the buffer is confirmed to be at least this long
+    /// and the forms above are what guarantee nothing longer is produced.
+    /// Sizing it exactly rather than generously is what keeps the two halves
+    /// of that argument in contact; with slack, an error in the arithmetic
+    /// above would quietly consume the slack instead of showing up.
     /// </para>
     ///
     /// <para>
@@ -243,9 +245,10 @@ public static class Decimal128TextCodec
     /// returns its length; the text is <c>destination[..n]</c>. No terminator
     /// is written. <c>destination</c> must have at least <c>MaxLen</c>
     /// elements; <c>null</c> throws <c>ArgumentNullException</c>, and a shorter
-    /// one throws <c>IndexOutOfRangeException</c> on the first write past its
-    /// end rather than corrupting anything, so an undersized buffer is a caller
-    /// bug that surfaces immediately.
+    /// one throws <c>InvalidOperationException</c> on entry rather than
+    /// corrupting anything, so an undersized buffer is a caller bug that
+    /// surfaces immediately -- on every call, not only on the values that
+    /// would have overflowed it.
     /// </para>
     ///
     /// <para>
@@ -283,9 +286,10 @@ public static class Decimal128TextCodec
     /// returns its length; the text is <c>destination[..n]</c>. No terminator
     /// is written. <c>destination</c> must have at least <c>MaxLen</c>
     /// elements; <c>null</c> throws <c>ArgumentNullException</c>, and a shorter
-    /// one throws <c>IndexOutOfRangeException</c> on the first write past its
-    /// end rather than corrupting anything, so an undersized buffer is a caller
-    /// bug that surfaces immediately.
+    /// one throws <c>InvalidOperationException</c> on entry rather than
+    /// corrupting anything, so an undersized buffer is a caller bug that
+    /// surfaces immediately -- on every call, not only on the values that
+    /// would have overflowed it.
     /// </para>
     ///
     /// <para>
@@ -500,9 +504,12 @@ public static class Decimal128TextCodec
     //            consumer never takes a throw inside the library on data they
     //            do not control.
     //
-    //   demand   buffer-sizing and invariant claims that guard a write or an
-    //            encode. Live in every configuration, because the alternative
-    //            is silently encoding an out-of-range value.
+    //   demand   the two claims that must hold in every configuration: that
+    //            the caller's buffer is at least MaxLen, checked once on
+    //            entry, and that a coefficient handed to the encoder is
+    //            inside the precision limit. Live everywhere, because the
+    //            alternative is overrunning the buffer or silently encoding
+    //            an out-of-range value.
     //
     // Both route through `impossible`, which throws rather than calling
     // Environment.FailFast: a codec is a leaf library a caller embeds, so it
@@ -639,6 +646,13 @@ public static class Decimal128TextCodec
         const int t = T_WIDTH; // trailing significand field width in bits
         verify(1 + W5 + t == K_WIDTH);
 
+        // The API's contract is a buffer of at least MaxLen, so that is what
+        // is checked -- once, on every call, rather than per value. A shorter
+        // buffer that happens to fit the value in hand is still a caller bug,
+        // and one that would otherwise surface only on the data that overflows
+        // it.
+        demand(ascii.Length >= MaxLen, "the buffer is at least MaxLen bytes");
+
         // 1 + 17 + 110 == 128
         // 1 bit for the sign
         bool sign = ((bid128Hi & SIGN_BIT) != 0);
@@ -713,6 +727,13 @@ public static class Decimal128TextCodec
     {
         const int w = 12;      // exponent continuation width
         const int t = T_WIDTH; // trailing significand field width in bits
+
+        // The API's contract is a buffer of at least MaxLen, so that is what
+        // is checked -- once, on every call, rather than per value. A shorter
+        // buffer that happens to fit the value in hand is still a caller bug,
+        // and one that would otherwise surface only on the data that overflows
+        // it.
+        demand(ascii.Length >= MaxLen, "the buffer is at least MaxLen bytes");
 
         bool sign = ((dpd128Hi & SIGN_BIT) != 0);
         int combination = (int)((dpd128Hi >> (t - 64)) & 0x1FFFF);
@@ -1114,7 +1135,6 @@ public static class Decimal128TextCodec
         ulong g = (gh * M_U32_DIV_1E1) >> S_U32_DIV_1E1;
         ulong h = gh - (g * 10);
 
-        demand(offMaxx - 8 >= 0 && offMaxx <= ascii.Length, "render8 buffer");
         ascii[offMaxx - 8] = (byte)(ascii_0 + a);
         ascii[offMaxx - 7] = (byte)(ascii_0 + b);
         ascii[offMaxx - 6] = (byte)(ascii_0 + c);
@@ -1158,7 +1178,6 @@ public static class Decimal128TextCodec
             ulong b = ab - (a * 10);
             ulong c = (cd * M_U32_DIV_1E1) >> S_U32_DIV_1E1;
             ulong d = cd - (c * 10);
-            demand(ib - 4 >= 0 && ib <= ascii.Length, "renderTail buffer");
             ascii[ib - 4] = (byte)(ascii_0 + a);
             ascii[ib - 3] = (byte)(ascii_0 + b);
             ascii[ib - 2] = (byte)(ascii_0 + c);

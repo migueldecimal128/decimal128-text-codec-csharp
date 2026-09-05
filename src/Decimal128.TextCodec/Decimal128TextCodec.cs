@@ -1288,13 +1288,14 @@ public static class Decimal128TextCodec
     /// </para>
     /// <para>
     /// The reason this spelling exists at all
-    /// is that C's own <c>strtod</c> reads <c>NAN(n-char-sequence)</c>, so the
+    /// is that the platform's own <c>strtod</c> reads
+    /// <c>NAN(n-char-sequence)</c>, so the
     /// spelling reaches a caller from the platform itself. The resemblance
     /// stops at the parentheses — strtod's sequence is letters, digits and
     /// underscores read as an implementation-defined integer (<c>NAN(abc)</c>
     /// and <c>NAN(0x1c8)</c> are legal there), while a decimal128 payload is
     /// decimal digits. This is a paren-tolerant spelling of our own payload
-    /// syntax, not C's.
+    /// syntax, not strtod's.
     /// </para>
     /// <para>
     /// The legacy base this family descends from skipped the six bracket

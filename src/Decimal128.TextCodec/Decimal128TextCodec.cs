@@ -1488,6 +1488,11 @@ public static class Decimal128TextCodec
         return totalLen;
     }
 
+    /// <summary>
+    /// Finite non-zero: pick the form. Integer when the quantum exponent is
+    /// zero, fixed-point when it is negative and the adjusted exponent is at
+    /// least <c>-6</c>, scientific otherwise — the GDAS auto-select rule.
+    /// </summary>
     private static int fnzAscii(Span<byte> ascii, bool sign, int qExp, ulong dw1, ulong dw0)
     {
         int digitLen = calcDigitLen128(dw1, dw0);

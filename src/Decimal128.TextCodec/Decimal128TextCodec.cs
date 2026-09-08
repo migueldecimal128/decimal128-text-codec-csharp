@@ -202,13 +202,12 @@ public static class Decimal128TextCodec
     /// <para>
     /// The output is the GDAS <c>to-scientific-string</c> form: integer
     /// notation when the quantum exponent is zero (e.g. <c>"123"</c>), plain
-    /// notation when the adjusted exponent is in the range -6 to 0 (e.g.
-    /// <c>"123.45"</c>), normalized scientific notation otherwise (e.g.
-    /// <c>"1.234E+5"</c>). The exponent sign is always written, as in
-    /// <c>"6.02E+23"</c>. Cohort information is preserved: <c>"1.00"</c> and
-    /// <c>"1.0"</c> are distinct outputs from distinct encodings of the same
-    /// numerical value.
-    /// </para>
+    /// notation when the quantum exponent is negative and the adjusted
+    /// exponent is at least -6 (e.g. <c>"123.45"</c>), normalized scientific
+    /// notation otherwise (e.g. <c>"1.234E+5"</c>). The exponent sign is
+    /// always written, as in <c>"6.02E+23"</c>. Cohort information is
+    /// preserved: <c>"1.00"</c> and <c>"1.0"</c> are distinct outputs from
+    /// distinct encodings of the same numerical value. </para>
     ///
     /// <para>
     /// Special values render as <c>"Infinity"</c>, <c>"-Infinity"</c>,
@@ -248,13 +247,12 @@ public static class Decimal128TextCodec
     /// <para>
     /// The output is the GDAS <c>to-scientific-string</c> form: integer
     /// notation when the quantum exponent is zero (e.g. <c>"123"</c>), plain
-    /// notation when the adjusted exponent is in the range -6 to 0 (e.g.
-    /// <c>"123.45"</c>), normalized scientific notation otherwise (e.g.
-    /// <c>"1.234E+5"</c>). The exponent sign is always written, as in
-    /// <c>"6.02E+23"</c>. Cohort information is preserved: <c>"1.00"</c> and
-    /// <c>"1.0"</c> are distinct outputs from distinct encodings of the same
-    /// numerical value.
-    /// </para>
+    /// notation when the quantum exponent is negative and the adjusted
+    /// exponent is at least -6 (e.g. <c>"123.45"</c>), normalized scientific
+    /// notation otherwise (e.g. <c>"1.234E+5"</c>). The exponent sign is
+    /// always written, as in <c>"6.02E+23"</c>. Cohort information is
+    /// preserved: <c>"1.00"</c> and <c>"1.0"</c> are distinct outputs from
+    /// distinct encodings of the same numerical value. </para>
     ///
     /// <para>
     /// Special values render as <c>"Infinity"</c>, <c>"-Infinity"</c>,

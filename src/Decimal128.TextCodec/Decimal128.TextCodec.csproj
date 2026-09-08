@@ -7,6 +7,19 @@
     <RootNamespace>Decimal128.TextCodec</RootNamespace>
     <AssemblyName>Decimal128.TextCodec</AssemblyName>
     <LangVersion>latest</LangVersion>
+
+    <!-- Package identity. Version tracks the other ports, which all declare
+         0.9.0; without it this would build as the .NET default 1.0.0 and claim
+         to be the most mature of the family. -->
+    <PackageId>Decimal128.TextCodec</PackageId>
+    <Version>0.9.0</Version>
+    <Authors>MiguelDecimal128</Authors>
+    <Description>Thin BID128/DPD128 &#8596; text codec for IEEE 754-2019 decimal128, in C#.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/migueldecimal128/decimal128-text-codec-csharp</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/migueldecimal128/decimal128-text-codec-csharp</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>decimal128;decimal;ieee754;bid;dpd;codec</PackageTags>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <!-- CheckForOverflowUnderflow is stated rather than assumed. Several sites

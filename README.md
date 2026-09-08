@@ -171,7 +171,7 @@ had the answer:
 - **`UInt128` is the public boundary**, as in Swift. The internals still work
   in `dw1`/`dw0` `ulong` pairs, exactly as the reference does — the split
   happens once on entry and the join once on exit.
-- **`unsignedMulHi` is `Math.BigMul`**, which the JIT turns into the machine's
+- **`mulhi64` is `Math.BigMul`**, which the JIT turns into the machine's
   widening multiply. The reference decomposes it into four 32×32 partial
   products because the JVM has no unsigned 64-bit multiply-high.
 - **Arithmetic wraps by default**, as Kotlin's does and unlike Swift's, so the

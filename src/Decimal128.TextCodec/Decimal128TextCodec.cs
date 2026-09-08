@@ -395,13 +395,7 @@ public static class Decimal128TextCodec
     /// failure.</returns>
     public static string? Bid128Parse(out UInt128 value, string text)
     {
-        ArgumentNullException.ThrowIfNull(text);
-        Words words = (0, 0);
-        string? errorStr = encodeStringOrError(ref words, formatIsBid: true, str: text);
-        if (errorStr != null)
-            words = (QNAN_PATTERN_HI, 0);
-        value = joinWords(words);
-        return errorStr;
+        return parseInto(out value, formatIsBid: true, text: text);
     }
 
     /// <summary>
@@ -482,9 +476,21 @@ public static class Decimal128TextCodec
     /// failure.</returns>
     public static string? Dpd128Parse(out UInt128 value, string text)
     {
+        return parseInto(out value, formatIsBid: false, text: text);
+    }
+
+    /// <summary>
+    /// <paramref name="value"/> is written on both paths -- the encoding on
+    /// success, the canonical positive quiet NaN on failure -- so the caller
+    /// never reads back what was there before the call. That is why a failure
+    /// is reported beside the value rather than in place of it: a caller who
+    /// discards the message still holds a legal IEEE 754-2019 datum.
+    /// </summary>
+    private static string? parseInto(out UInt128 value, bool formatIsBid, string text)
+    {
         ArgumentNullException.ThrowIfNull(text);
         Words words = (0, 0);
-        string? errorStr = encodeStringOrError(ref words, formatIsBid: false, str: text);
+        string? errorStr = encodeStringOrError(ref words, formatIsBid: formatIsBid, str: text);
         if (errorStr != null)
             words = (QNAN_PATTERN_HI, 0);
         value = joinWords(words);
@@ -690,7 +696,7 @@ public static class Decimal128TextCodec
         else if ((combination >> (W5 - 5)) == 0b11110)
         {
             // if the top 5 bits are 0b11110 then Infinity
-            return infBytes(ascii, sign);
+            return infAscii(ascii, sign);
         }
         else
         {
@@ -698,7 +704,7 @@ public static class Decimal128TextCodec
             // with the next bit determining signaling NaN
             verify((combination >> (W5 - 5)) == 0b11111);
             bool isSignalingNaN = (((combination >> (W5 - 6)) & 1) != 0);
-            return nanBytes(ascii, sign, isSignalingNaN, coeffTHi, bid128Lo);
+            return nanAscii(ascii, sign, isSignalingNaN, coeffTHi, bid128Lo);
         }
 
         ulong dw1 = (coeffHi << (t - 64)) | coeffTHi;
@@ -710,9 +716,9 @@ public static class Decimal128TextCodec
             MAXX_COEFF_34_HI < dw1 ||
             (dw1 == MAXX_COEFF_34_HI && (MAXX_COEFF_34_LO - 1) < dw0))
         {
-            return zerBytes(ascii, sign, qExp);
+            return zerAscii(ascii, sign, qExp);
         }
-        return fnzBytes(ascii, sign, qExp, dw1, dw0);
+        return fnzAscii(ascii, sign, qExp, dw1, dw0);
     }
 
     /// <summary>
@@ -761,7 +767,7 @@ public static class Decimal128TextCodec
         }
         else if ((combination >> (W5 - 5)) == 0b11110)
         {
-            return infBytes(ascii, sign);
+            return infAscii(ascii, sign);
         }
         else
         {
@@ -794,14 +800,14 @@ public static class Decimal128TextCodec
             // (C# wraps by default in an unchecked context.)
             dw0 = (binHi * TEN_POW_18) + binLo;
             ulong carry = (dw0 < binLo) ? 1UL : 0UL;
-            dw1 = unsignedMulHi(binHi, TEN_POW_18) + carry;
+            dw1 = mulhi64(binHi, TEN_POW_18) + carry;
         }
 
         if (isNaN)
-            return nanBytes(ascii, sign, isSignaling, dw1, dw0);
+            return nanAscii(ascii, sign, isSignaling, dw1, dw0);
         if ((dw1 | dw0) == 0)
-            return zerBytes(ascii, sign, qExp);
-        return fnzBytes(ascii, sign, qExp, dw1, dw0);
+            return zerAscii(ascii, sign, qExp);
+        return fnzAscii(ascii, sign, qExp, dw1, dw0);
     }
 
 
@@ -817,7 +823,7 @@ public static class Decimal128TextCodec
     /// </summary>
     private static ReadOnlySpan<byte> PlainZero => "0.000000"u8;
 
-    private static int infBytes(Span<byte> ascii, bool sign)
+    private static int infAscii(Span<byte> ascii, bool sign)
     {
         int signLen = (sign) ? 1 : 0;
         ascii[0] = ascii_minus; // overwritten by the 'I' when unsigned
@@ -825,7 +831,7 @@ public static class Decimal128TextCodec
         return signLen + InfinityText.Length;
     }
 
-    private static int nanBytes(Span<byte> ascii, bool sign, bool isSignaling, ulong payloadHi, ulong payloadLo)
+    private static int nanAscii(Span<byte> ascii, bool sign, bool isSignaling, ulong payloadHi, ulong payloadLo)
     {
         int signLen = (sign) ? 1 : 0;
         int sLen = (isSignaling) ? 1 : 0;
@@ -846,7 +852,7 @@ public static class Decimal128TextCodec
         return baseLen + digitLen;
     }
 
-    private static int zerBytes(Span<byte> ascii, bool sign, int qExp)
+    private static int zerAscii(Span<byte> ascii, bool sign, int qExp)
     {
         int signLen = (sign) ? 1 : 0;
         ascii[0] = ascii_minus; // overwritten by the '0' when unsigned
@@ -858,24 +864,24 @@ public static class Decimal128TextCodec
             return signLen + zeroLen;
         }
         // A positive exponent needs an explicit '+'; a negative one prints its
-        // own '-' from appendIntBytes. Write the '+' unconditionally and let
-        // appendIntBytes land on top of it when qExp < 0 — the same discipline
+        // own '-' from appendInt. Write the '+' unconditionally and let
+        // appendInt land on top of it when qExp < 0 — the same discipline
         // as the leading sign, pointed the other way. It is correct only
-        // because appendIntBytes emits a '-' for a negative value and emits
+        // because appendInt emits a '-' for a negative value and emits
         // nothing for a positive one, and because the plain form above has
         // already taken every qExp in [-6, 0], so this branch never sees zero.
         int plusLen = (qExp > 0) ? 1 : 0;
         int baseLen = signLen + ZeroExpText.Length + plusLen;
         ZeroExpText.CopyTo(ascii[signLen..]);
         ascii[signLen + ZeroExpText.Length] = ascii_plus; // overwritten by the '-' when qExp < 0
-        return baseLen + appendIntBytes(ascii, baseLen, qExp);
+        return baseLen + appendInt(ascii, baseLen, qExp);
     }
 
     /// <summary>
     /// Write a signed decimal exponent at <paramref name="off"/>, returning its
     /// length. The magnitude never exceeds 6176, so it is at most four digits.
     /// </summary>
-    private static int appendIntBytes(Span<byte> ascii, int off, int v)
+    private static int appendInt(Span<byte> ascii, int off, int v)
     {
         int signLen = 0;
         int magnitude = v;
@@ -898,22 +904,22 @@ public static class Decimal128TextCodec
         return signLen + digitLen;
     }
 
-    private static int fnzBytes(Span<byte> ascii, bool sign, int qExp, ulong dw1, ulong dw0)
+    private static int fnzAscii(Span<byte> ascii, bool sign, int qExp, ulong dw1, ulong dw0)
     {
         int digitLen = calcDigitLen128(dw1, dw0);
         int eExp = qExp + (digitLen - 1);
         if (qExp == 0)
-            return fnzToIntegerBytes(ascii, sign, digitLen, dw1, dw0);
+            return fnzToIntegerAscii(ascii, sign, digitLen, dw1, dw0);
         if (qExp <= 0 && eExp >= -6)
-            return fnzToDecimalPointBytes(ascii, sign, qExp, digitLen, dw1, dw0);
-        return fnzToNormalizedScientificBytes(ascii, sign, qExp, digitLen, dw1, dw0);
+            return fnzToDecimalPointAscii(ascii, sign, qExp, digitLen, dw1, dw0);
+        return fnzToNormalizedScientificAscii(ascii, sign, qExp, digitLen, dw1, dw0);
     }
 
     /// <summary>
     /// Format a finite non-zero value with <c>qExp == 0</c> as a plain integer
     /// sequence: no radix point, no exponent.
     /// </summary>
-    private static int fnzToIntegerBytes(Span<byte> ascii, bool sign, int digitLen, ulong dw1, ulong dw0)
+    private static int fnzToIntegerAscii(Span<byte> ascii, bool sign, int digitLen, ulong dw1, ulong dw0)
     {
         verify(digitLen > 0);
         int signLen = (sign) ? 1 : 0;
@@ -934,7 +940,7 @@ public static class Decimal128TextCodec
     /// one position to open a slot for the radix point. Leading zeros are
     /// written directly into the buffer before the digits.
     /// </remarks>
-    private static int fnzToDecimalPointBytes(Span<byte> ascii, bool sign, int qExp, int digitLen, ulong dw1, ulong dw0)
+    private static int fnzToDecimalPointAscii(Span<byte> ascii, bool sign, int qExp, int digitLen, ulong dw1, ulong dw0)
     {
         int digitsRightOfDecimal = -qExp;
         int leadingZeroCount = Math.Max(1 + digitsRightOfDecimal - digitLen, 0);
@@ -962,7 +968,7 @@ public static class Decimal128TextCodec
     /// non-negative exponents, <c>-</c> for negative, per the GDAS
     /// <c>to-scientific-string</c> form.
     /// </remarks>
-    private static int fnzToNormalizedScientificBytes(Span<byte> ascii, bool sign, int qExp, int digitLen, ulong dw1, ulong dw0)
+    private static int fnzToNormalizedScientificAscii(Span<byte> ascii, bool sign, int qExp, int digitLen, ulong dw1, ulong dw0)
     {
         verify(digitLen > 0);
         int eExp = qExp + (digitLen - 1);
@@ -1008,8 +1014,8 @@ public static class Decimal128TextCodec
     /// </summary>
     /// <remarks>
     /// Compute <c>n / 10^8</c> as
-    /// <c>unsignedMulHi(n, M_U64_DIV_1E8) >> S_U64_DIV_1E8</c>. The shift is
-    /// "+ 64 high" because <see cref="unsignedMulHi"/> already returns the
+    /// <c>mulhi64(n, M_U64_DIV_1E8) >> S_U64_DIV_1E8</c>. The shift is
+    /// "+ 64 high" because <see cref="mulhi64"/> already returns the
     /// upper 64 bits of the 128-bit product; the named shift combines with that
     /// to give the effective magic-number divide.
     /// </remarks>
@@ -1028,7 +1034,7 @@ public static class Decimal128TextCodec
     /// <list type="number">
     ///   <item>While <c>dw1T != 0</c>: peel 8 digits per outer iteration via
     ///     three <c>÷ 10^8</c> divisions on rotating 96-bit chunks, using
-    ///     <see cref="unsignedMulHi"/> for the high half of each multi-word
+    ///     <see cref="mulhi64"/> for the high half of each multi-word
     ///     divide.</item>
     ///   <item>Once the value fits in 64 bits: peel 8 digits at a time via a
     ///     single <c>÷ 10^8</c> per iteration.</item>
@@ -1049,13 +1055,13 @@ public static class Decimal128TextCodec
         int remainingDigitCount = digitPrintCount;
         while (dw1T != 0)
         {
-            ulong q2 = unsignedMulHi(dw1T, M_U64_DIV_1E8) >> S_U64_DIV_1E8;
+            ulong q2 = mulhi64(dw1T, M_U64_DIV_1E8) >> S_U64_DIV_1E8;
             ulong r2 = dw1T - (q2 * 100_000_000);
             ulong s2 = (r2 << 32) | (dw0T >> 32);
-            ulong q1 = unsignedMulHi(s2, M_U64_DIV_1E8) >> S_U64_DIV_1E8;
+            ulong q1 = mulhi64(s2, M_U64_DIV_1E8) >> S_U64_DIV_1E8;
             ulong r1 = s2 - (q1 * 100_000_000);
             ulong s1 = (r1 << 32) | (dw0T & MASK32);
-            ulong q0 = unsignedMulHi(s1, M_U64_DIV_1E8) >> S_U64_DIV_1E8;
+            ulong q0 = mulhi64(s1, M_U64_DIV_1E8) >> S_U64_DIV_1E8;
             ulong r0 = s1 - (q0 * 100_000_000);
             // q1 and q0 are each strictly below 2^32 -- r2 and r1 are remainders
             // mod 10^8 -- so this recombination cannot overflow
@@ -1067,7 +1073,7 @@ public static class Decimal128TextCodec
         }
         while (remainingDigitCount >= 8)
         {
-            ulong t0 = unsignedMulHi(dw0T, M_U64_DIV_1E8) >> S_U64_DIV_1E8;
+            ulong t0 = mulhi64(dw0T, M_U64_DIV_1E8) >> S_U64_DIV_1E8;
             ulong r0 = dw0T - (t0 * 100_000_000);
             dw0T = t0;
             render8DigitsBeforeIndex(r0, ascii, ich);
@@ -1114,7 +1120,7 @@ public static class Decimal128TextCodec
     /// </remarks>
     private static void render8DigitsBeforeIndex(ulong dw, Span<byte> ascii, int offMaxx)
     {
-        ulong abcd = unsignedMulHi(dw, M_U64_DIV_1E4) >> S_U64_DIV_1E4;
+        ulong abcd = mulhi64(dw, M_U64_DIV_1E4) >> S_U64_DIV_1E4;
         ulong efgh = dw - (abcd * 10000);
 
         ulong ab = (abcd * M_U32_DIV_1E2) >> S_U32_DIV_1E2;
@@ -1169,7 +1175,7 @@ public static class Decimal128TextCodec
         int ib = offMaxx;
         while (remainingDigitCount >= 4)
         {
-            ulong t0 = unsignedMulHi(t, M_U64_DIV_1E4) >> S_U64_DIV_1E4;
+            ulong t0 = mulhi64(t, M_U64_DIV_1E4) >> S_U64_DIV_1E4;
             ulong abcd = t - (t0 * 10000);
             t = t0;
             ulong ab = (abcd * M_U32_DIV_1E2) >> S_U32_DIV_1E2;
@@ -1899,7 +1905,7 @@ public static class Decimal128TextCodec
         // wraps by construction, and the
         // discarded halves are known zero because the caller checked the result
         // fits in 34 digits.
-        ulong pp00Hi = unsignedMulHi(dw0, y0);
+        ulong pp00Hi = mulhi64(dw0, y0);
         ulong pp00Lo = dw0 * y0;
         ulong pp10Lo = dw1 * y0;
         ulong pp01Lo = dw0 * y1;
@@ -2149,7 +2155,7 @@ public static class Decimal128TextCodec
         while (rest != 0)
         {
             // reciprocal-multiply divide by 1000
-            ulong q = unsignedMulHi(rest, 0x020C_49BA_5E35_3F7D) >> 3;
+            ulong q = mulhi64(rest, 0x020C_49BA_5E35_3F7D) >> 3;
             declets |= dpdEncodeDeclet(rest - (q * 1000)) << shift;
             shift += 10;
             rest = q;
@@ -2379,7 +2385,7 @@ public static class Decimal128TextCodec
     /// machine's widening multiply.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong unsignedMulHi(ulong x, ulong y)
+    private static ulong mulhi64(ulong x, ulong y)
     {
         return Math.BigMul(x, y, out _);
     }
@@ -2394,7 +2400,7 @@ public static class Decimal128TextCodec
         ulong y = POW10[pow10 << 1];
         // the low word of a genuine 128-bit product, so both wrap by design
         ulong prodLo = x * y;
-        ulong prodHi = unsignedMulHi(x, y);
+        ulong prodHi = mulhi64(x, y);
         ulong sumLo = prodLo + a;
         ulong sumHi = prodHi + ((sumLo < prodLo) ? 1UL : 0UL);
         return (sumHi, sumLo);

@@ -148,10 +148,10 @@ public static class Decimal128TextCodec
 
     [Conditional("VERIFY_ENABLED")]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void verify(bool condition, string message = "invariant")
+    private static void verify(bool condition)
     {
         if (!condition) {
-            impossible(message);
+            impossible("verify failed");
         }
     }
 

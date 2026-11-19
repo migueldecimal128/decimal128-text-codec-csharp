@@ -813,9 +813,9 @@ public static class Decimal128TextCodec
         ulong p1 = POW10[pow10Offset + 1];
         ulong p0 = POW10[pow10Offset];
         if (dw1 != p1) {
-            return (dw1 < p1) ? hiDigitCount - 1 : hiDigitCount;
+            return hiDigitCount - ((dw1 < p1) ? 1 : 0);
         }
-        return (dw0 < p0) ? hiDigitCount - 1 : hiDigitCount;
+        return hiDigitCount - ((dw0 < p0) ? 1 : 0);
     }
 
     /// <summary>
@@ -1158,6 +1158,7 @@ public static class Decimal128TextCodec
         ulong g = (gh * M_U32_DIV_1E1) >> S_U32_DIV_1E1;
         ulong h = gh - (g * 10);
 
+        demand(offMaxx - 8 >= 0 && offMaxx <= ascii.Length, "render8DigitsBeforeIndex: offset out of range");
         ascii[offMaxx - 8] = (byte)(ascii_0 + a);
         ascii[offMaxx - 7] = (byte)(ascii_0 + b);
         ascii[offMaxx - 6] = (byte)(ascii_0 + c);
@@ -1203,6 +1204,7 @@ public static class Decimal128TextCodec
             ulong b = ab - (a * 10);
             ulong c = (cd * M_U32_DIV_1E1) >> S_U32_DIV_1E1;
             ulong d = cd - (c * 10);
+            demand(ib - 4 >= 0 && ib <= ascii.Length, "u128ToAscii: offset out of range");
             ascii[ib - 4] = (byte)(ascii_0 + a);
             ascii[ib - 3] = (byte)(ascii_0 + b);
             ascii[ib - 2] = (byte)(ascii_0 + c);

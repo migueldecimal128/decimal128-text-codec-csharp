@@ -138,16 +138,18 @@ public static class Decimal128TextCodec
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void demand(bool condition, string message = "invariant")
     {
-        if (!condition)
+        if (!condition) {
             impossible(message);
+        }
     }
 
     [Conditional("VERIFY_ENABLED")]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void verify(bool condition, string message = "invariant")
     {
-        if (!condition)
+        if (!condition) {
             impossible(message);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -542,8 +544,9 @@ public static class Decimal128TextCodec
         ArgumentNullException.ThrowIfNull(text);
         Words words = (0, 0);
         string? errorStr = encodeStringOrError(ref words, formatIsBid: formatIsBid, str: text);
-        if (errorStr != null)
+        if (errorStr != null) {
             words = (QNAN_PATTERN_HI, 0);
+        }
         value = joinWords(words);
         return errorStr;
     }
@@ -810,10 +813,12 @@ public static class Decimal128TextCodec
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int calcBitLen128(ulong dw1, ulong dw0)
     {
-        if (dw1 != 0)
+        if (dw1 != 0) {
             return 128 - BitOperations.LeadingZeroCount(dw1);
-        if (dw0 != 0)
+        }
+        if (dw0 != 0) {
             return 64 - BitOperations.LeadingZeroCount(dw0);
+        }
         return 0;
     }
 
@@ -834,8 +839,9 @@ public static class Decimal128TextCodec
         int pow10Offset = loDigitCount << 1;
         ulong p1 = POW10[pow10Offset + 1];
         ulong p0 = POW10[pow10Offset];
-        if (dw1 != p1)
+        if (dw1 != p1) {
             return (dw1 < p1) ? hiDigitCount - 1 : hiDigitCount;
+        }
         return (dw0 < p0) ? hiDigitCount - 1 : hiDigitCount;
     }
 
@@ -931,18 +937,21 @@ public static class Decimal128TextCodec
     /// </remarks>
     private static int residueFromValuePow10(ulong dw1, ulong dw0, int pow10)
     {
-        if ((dw1 | dw0) == 0)
+        if ((dw1 | dw0) == 0) {
             return EXACT;
+        }
         int pow10Index = pow10 << 1;
         ulong pow10Hi = POW10[pow10Index + 1];
         ulong pow10Lo = POW10[pow10Index];
 
         ulong halfHi = pow10Hi >> 1;
         ulong halfLo = (pow10Hi << 63) | (pow10Lo >> 1);
-        if (dw1 != halfHi)
+        if (dw1 != halfHi) {
             return (dw1 < halfHi) ? LT_HALF : GT_HALF;
-        if (dw0 != halfLo)
+        }
+        if (dw0 != halfLo) {
             return (dw0 < halfLo) ? LT_HALF : GT_HALF;
+        }
         return HALF;
     }
 
@@ -960,7 +969,7 @@ public static class Decimal128TextCodec
         ulong dw1T = dw1;
         ulong dw0T = dw0;
         int digitsRemaining = truncationNeeded;
-        do
+        while (digitsRemaining > 0)
         {
             int stepPow10 = Math.Min(digitsRemaining, 9);
             var step = u113DivModPow10Max9(dw1T, dw0T, stepPow10);
@@ -969,7 +978,7 @@ public static class Decimal128TextCodec
             int stepResidue = residueFromValuePow10(0, step.rem, stepPow10);
             scaleResidue = residueMerge(stepResidue, scaleResidue);
             digitsRemaining -= stepPow10;
-        } while (digitsRemaining > 0);
+        }
         return (dw1T, dw0T, scaleResidue);
     }
 
@@ -997,8 +1006,9 @@ public static class Decimal128TextCodec
     {
         verify(declet <= 1023);
 
-        if (declet == 0)
+        if (declet == 0) {
             return 0;
+        }
 
         // Unpack to bits p..y
         ulong p = (declet >> 9) & 1;
@@ -1056,8 +1066,9 @@ public static class Decimal128TextCodec
     {
         verify(n <= 999);
 
-        if (n == 0)
+        if (n == 0) {
             return 0;
+        }
 
         // reciprocal-multiply digit extraction (optimized for n <= 999)
         ulong q10 = (n * 205) >> 11; // n / 10
@@ -1307,8 +1318,9 @@ public static class Decimal128TextCodec
             ich -= 8;
             remainingDigitCount -= 8;
         }
-        if (remainingDigitCount > 0)
+        if (remainingDigitCount > 0) {
             renderTailDigitsBeforeIndex(remainingDigitCount, dw0T, ascii, ich);
+        }
         return digitPrintCount;
     }
 
@@ -1327,14 +1339,15 @@ public static class Decimal128TextCodec
             magnitude = -v;
         }
         int digitLen;
-        if (magnitude >= 1000)
+        if (magnitude >= 1000) {
             digitLen = 4;
-        else if (magnitude >= 100)
+        } else if (magnitude >= 100) {
             digitLen = 3;
-        else if (magnitude >= 10)
+        } else if (magnitude >= 10) {
             digitLen = 2;
-        else
+        } else {
             digitLen = 1;
+        }
         renderTailDigitsBeforeIndex(digitLen, (ulong)magnitude, ascii, off + signLen + digitLen);
         return signLen + digitLen;
     }
@@ -1430,11 +1443,17 @@ public static class Decimal128TextCodec
         int decimalPointLen = 1;
         int totalLen = signLen + leadingZeroCount + decimalPointLen + digitLen;
         ascii[0] = ascii_minus;
-        for (int i = signLen; i <= leadingZeroCount; ++i) // there is one extra here
+        int i = signLen;
+        while (i <= leadingZeroCount) { // there is one extra here
             ascii[i] = ascii_0;
+            i += 1;
+        }
         u128ToAscii(digitLen, dw1, dw0, ascii, signLen + leadingZeroCount);
-        for (int i = totalLen - 1; i >= totalLen - digitsRightOfDecimal; --i)
-            ascii[i] = ascii[i - 1];
+        int j = totalLen - 1;
+        while (j >= totalLen - digitsRightOfDecimal) {
+            ascii[j] = ascii[j - 1];
+            j -= 1;
+        }
         ascii[totalLen - digitsRightOfDecimal - 1] = ascii_dot;
         return totalLen;
     }
@@ -1463,14 +1482,15 @@ public static class Decimal128TextCodec
         int expSignLen = 1;
         byte expSignByte = (eExp < 0) ? ascii_minus : ascii_plus;
         int expDigitLen;
-        if (eExpAbs >= 1000)
+        if (eExpAbs >= 1000) {
             expDigitLen = 4;
-        else if (eExpAbs >= 100)
+        } else if (eExpAbs >= 100) {
             expDigitLen = 3;
-        else if (eExpAbs >= 10)
+        } else if (eExpAbs >= 10) {
             expDigitLen = 2;
-        else
+        } else {
             expDigitLen = 1;
+        }
         int totalLen = signLen + decimalPointLen + digitLen + expELen + expSignLen + expDigitLen;
         ascii[0] = ascii_minus;
         u128ToAscii(digitLen, dw1, dw0, ascii, signLen + decimalPointLen);
@@ -1495,10 +1515,12 @@ public static class Decimal128TextCodec
     {
         int digitLen = calcDigitLen128(dw1, dw0);
         int eExp = qExp + (digitLen - 1);
-        if (qExp == 0)
+        if (qExp == 0) {
             return fnzToIntegerAscii(ascii, sign, digitLen, dw1, dw0);
-        if (qExp <= 0 && eExp >= -6)
+        }
+        if (qExp <= 0 && eExp >= -6) {
             return fnzToDecimalPointAscii(ascii, sign, qExp, digitLen, dw1, dw0);
+        }
         return fnzToNormalizedScientificAscii(ascii, sign, qExp, digitLen, dw1, dw0);
     }
 
@@ -1697,10 +1719,12 @@ public static class Decimal128TextCodec
             dw1 = mulhi64(binHi, TEN_POW_18) + carry;
         }
 
-        if (isNaN)
+        if (isNaN) {
             return nanAscii(ascii, sign, isSignaling, dw1, dw0);
-        if ((dw1 | dw0) == 0)
+        }
+        if ((dw1 | dw0) == 0) {
             return zerAscii(ascii, sign, qExp);
+        }
         return fnzAscii(ascii, sign, qExp, dw1, dw0);
     }
 
@@ -1858,10 +1882,12 @@ public static class Decimal128TextCodec
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool coeffQExpFit(ulong dw1, ulong dw0, int qExp)
     {
-        if (qExp < Q_MIN || qExp > Q_MAX)
+        if (qExp < Q_MIN || qExp > Q_MAX) {
             return false;
-        if (BitOperations.LeadingZeroCount(dw1) > 128 - 113)
+        }
+        if (BitOperations.LeadingZeroCount(dw1) > 128 - 113) {
             return true;
+        }
         int pow10Offset = 34 << 1;
         ulong maxxHi = POW10[pow10Offset + 1];
         return (dw1 < maxxHi || (dw1 == maxxHi && dw0 < POW10[pow10Offset]));
@@ -1975,8 +2001,9 @@ public static class Decimal128TextCodec
             // Swamped: the result is zero under ties-to-even, and always inexact
             return roundAndFinalizeFinite(formatIsBid, sign, Q_MIN, 0, 0, LT_HALF);
         }
-        if (truncationNeeded == digitLen)
+        if (truncationNeeded == digitLen) {
             return finalizeUnderflowBoundary(formatIsBid, sign, dw1, dw0, residue);
+        }
         return finalizeSubnormal(formatIsBid, sign, qExp, dw1, dw0, residue);
     }
 
@@ -2030,8 +2057,9 @@ public static class Decimal128TextCodec
         //         ... and no ties-to-even rounding to apply
         if (residueIn <= LT_HALF || (residueIn == HALF && (dw0In & 1) == 0))
         {
-            if (coeffQExpFit(dw1In, dw0In, qExpIn))
+            if (coeffQExpFit(dw1In, dw0In, qExpIn)) {
                 return setFinite(formatIsBid, sign, qExpIn, dw1In, dw0In);
+            }
             // Step 2: zero coefficient with out-of-range qExp ... clamp qExp
             if ((dw1In | dw0In) == 0)
             {
@@ -2075,8 +2103,9 @@ public static class Decimal128TextCodec
 
         // Step 4: underflow. With no precision truncation to outrank it, the
         // test is simply whether the exponent is below the minimum.
-        if (qExpIn < Q_MIN)
+        if (qExpIn < Q_MIN) {
             return finalizeUnderflowRegion(formatIsBid, sign, qExpIn, dw1In, dw0In, residueIn);
+        }
 
         int totalResidue = residueIn;
         ulong dw1 = dw1In;
@@ -2109,8 +2138,9 @@ public static class Decimal128TextCodec
         {
             int qExcess = qExp - Q_MAX;
             int digitLen = calcDigitLen128(dw1, dw0);
-            if (digitLen + qExcess <= 34)
+            if (digitLen + qExcess <= 34) {
                 return finalizeClamping(formatIsBid, sign, qExp, dw1, dw0);
+            }
             return finalizeOverflow(sign);
         }
         return setFinite(formatIsBid, sign, qExp, dw1, dw0);
@@ -2192,8 +2222,9 @@ public static class Decimal128TextCodec
                 hasCoefficientDigit = true;
                 // count while flushing leading zeros. This can be done
                 // branchlessly off a 32-bit sign shift; said directly here.
-                if (significantDigitCount != 0 || d != 0)
+                if (significantDigitCount != 0 || d != 0) {
                     significantDigitCount += 1;
+                }
                 if (significantDigitCount <= 19)
                 {
                     // at most 19 digits, and 10^19 - 1 fits a ulong
@@ -2212,41 +2243,50 @@ public static class Decimal128TextCodec
                 {
                     residue = residueMerge(residue, residueFromDecimalDigit(d));
                 }
-                if (hasDot)
+                if (hasDot) {
                     fractionalDigitCount += 1;
+                }
                 prevWasDigit = true;
                 afterUnderscore = false;
             }
             else if (ch == ascii_underscore)
             {
-                if (!prevWasDigit)
+                if (!prevWasDigit) {
                     return "INVALID_UNDERSCORE_LOCATION";
+                }
                 prevWasDigit = false;
                 afterUnderscore = true;
             }
             else // '.'
             {
-                if (afterUnderscore)
+                if (afterUnderscore) {
                     return "INVALID_UNDERSCORE_LOCATION";
-                if (hasDot)
+                }
+                if (hasDot) {
                     return "DOUBLE_DOT";
+                }
                 hasDot = true;
                 prevWasDigit = false;
             }
-            ch = codeAt(str, pos++);
+            ch = codeAt(str, pos);
+            pos += 1;
         }
-        if (afterUnderscore)
+        if (afterUnderscore) {
             return "INVALID_UNDERSCORE_LOCATION";
-        if (!hasCoefficientDigit)
+        }
+        if (!hasCoefficientDigit) {
             return "NO_COEFFICIENT_DIGIT";
+        }
         // this path has at least one digit
         if (ch == ascii_E || ch == ascii_e)
         {
-            ch = codeAt(str, pos++);
+            ch = codeAt(str, pos);
+            pos += 1;
             if (ch == ascii_plus || ch == ascii_minus)
             {
                 expSign = (ch == ascii_minus);
-                ch = codeAt(str, pos++);
+                ch = codeAt(str, pos);
+                pos += 1;
             }
             bool hasExpDigit = false;
             int expSignificantDigitCount = 0;
@@ -2256,8 +2296,9 @@ public static class Decimal128TextCodec
             {
                 if (ch == ascii_underscore)
                 {
-                    if (!prevWasDigit)
+                    if (!prevWasDigit) {
                         return "INVALID_UNDERSCORE_LOCATION";
+                    }
                     prevWasDigit = false;
                     afterUnderscore = true;
                 }
@@ -2266,8 +2307,9 @@ public static class Decimal128TextCodec
                     hasExpDigit = true;
                     int eDigit = ch - ascii_0;
                     // count while flushing leading zeros
-                    if (expSignificantDigitCount != 0 || eDigit != 0)
+                    if (expSignificantDigitCount != 0 || eDigit != 0) {
                         expSignificantDigitCount += 1;
+                    }
                     // Wrapping on purpose: the
                     // clamp below discards `exp` entirely once more than 4
                     // significant digits were written, which is strictly before
@@ -2276,18 +2318,23 @@ public static class Decimal128TextCodec
                     prevWasDigit = true;
                     afterUnderscore = false;
                 }
-                ch = codeAt(str, pos++);
+                ch = codeAt(str, pos);
+                pos += 1;
             }
-            if (afterUnderscore)
+            if (afterUnderscore) {
                 return "INVALID_UNDERSCORE_LOCATION";
-            if (!hasExpDigit)
+            }
+            if (!hasExpDigit) {
                 return "NO_EXPONENT_DIGIT";
+            }
             // clamp exp to 9999 once after the loop
-            if (expSignificantDigitCount > 4)
+            if (expSignificantDigitCount > 4) {
                 exp = 9999;
+            }
         }
-        if (ch != -1)
+        if (ch != -1) {
             return "UNEXPECTED_CHAR";
+        }
         // we have at least one digit
         ulong dw0 = accum19a;
         ulong dw1 = 0;
@@ -2319,21 +2366,26 @@ public static class Decimal128TextCodec
         int ch = chFirst;
         int chPrevCode = 0;
         const string target = "infinity";
-        for (int i = 0; i < 8; ++i)
+        int i = 0;
+        while (i < 8)
         {
             int targetCode = target[i];
             if ((ch | 0x20) != targetCode)
             {
-                if (ch == -1)
+                if (ch == -1) {
                     break;
-                else
+                } else {
                     return "FAILURE_PARSING_INFINITY";
+                }
             }
             chPrevCode = ch | 0x20;
-            ch = codeAt(str, pos++);
+            ch = codeAt(str, pos);
+            pos += 1;
+            i += 1;
         }
-        if (ch != -1 || (chPrevCode != 'f' && chPrevCode != 'y'))
+        if (ch != -1 || (chPrevCode != 'f' && chPrevCode != 'y')) {
             return "FAILURE_PARSING_INFINITY";
+        }
         outWords = (INF_PATTERN_HI | (sign ? SIGN_BIT : 0), 0);
         return null;
     }
@@ -2380,20 +2432,26 @@ public static class Decimal128TextCodec
         int ch = chFirst;
         bool hasS = ((ch | 0x20) == 's');
         bool hasQ = ((ch | 0x20) == 'q');
-        if (hasQ || hasS)
-            ch = codeAt(str, pos++);
+        if (hasQ || hasS) {
+            ch = codeAt(str, pos);
+            pos += 1;
+        }
         if ((ch | 0x20) != 'n' ||
-            (codeAt(str, pos++) | 0x20) != 'a' ||
-            (codeAt(str, pos++) | 0x20) != 'n')
+            (codeAt(str, pos) | 0x20) != 'a' ||
+            (codeAt(str, pos + 1) | 0x20) != 'n')
         {
             return "FAILURE_PARSING_NAN";
         }
+        pos += 2;
         ulong payloadDw0 = 0;
         ulong payloadDw1 = 0;
-        ch = codeAt(str, pos++);
+        ch = codeAt(str, pos);
+        pos += 1;
         bool hasParen = (ch == ascii_lparen);
-        if (hasParen)
-            ch = codeAt(str, pos++);
+        if (hasParen) {
+            ch = codeAt(str, pos);
+            pos += 1;
+        }
         if (hasParen || ch != -1)
         {
             int accumDigitCount = 0;
@@ -2422,17 +2480,21 @@ public static class Decimal128TextCodec
                     // is discarded below, so the wrapped value is never read.
                     accum19b = (accum19b * 10) + d;
                 }
-                ch = codeAt(str, pos++);
+                ch = codeAt(str, pos);
+                pos += 1;
             }
-            if (accumDigitCount == 0)
+            if (accumDigitCount == 0) {
                 return "FAILURE_PARSING_NAN";
+            }
             if (hasParen)
             {
                 // the ')' must be present and must end the input
-                if (ch != ascii_rparen)
+                if (ch != ascii_rparen) {
                     return "FAILURE_PARSING_NAN";
-                if (codeAt(str, pos++) != -1)
+                }
+                if (codeAt(str, pos) != -1) {
                     return "FAILURE_PARSING_NAN";
+                }
             }
             else if (ch != -1)
             {
@@ -2474,20 +2536,27 @@ public static class Decimal128TextCodec
     private static string? encodeStringOrError(ref Words outWords, bool formatIsBid, string str)
     {
         int pos = 0;
-        int chFirst = codeAt(str, pos++);
+        int chFirst = codeAt(str, pos);
+        pos += 1;
         int ch = chFirst;
         bool sign = (ch == ascii_minus);
-        if (ch == ascii_plus || ch == ascii_minus)
-            ch = codeAt(str, pos++);
-        if (isDigit(ch) || ch == ascii_dot)
+        if (ch == ascii_plus || ch == ascii_minus) {
+            ch = codeAt(str, pos);
+            pos += 1;
+        }
+        if (isDigit(ch) || ch == ascii_dot) {
             return parseFiniteValueText(ref outWords, formatIsBid, sign, ch, str, pos);
+        }
         int chLower = ch | 0x20;
-        if (chLower == 'i')
+        if (chLower == 'i') {
             return parseInfinityText(ref outWords, sign, ch, str, pos);
-        if (chLower == 'n' || chLower == 's' || chLower == 'q')
+        }
+        if (chLower == 'n' || chLower == 's' || chLower == 'q') {
             return parseNanText(ref outWords, formatIsBid, sign, ch, str, pos);
-        if (chFirst == -1)
+        }
+        if (chFirst == -1) {
             return "EMPTY_STRING";
+        }
         return "INVALID_FORMAT";
     }
 

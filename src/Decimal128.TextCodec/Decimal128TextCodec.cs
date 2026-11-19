@@ -129,6 +129,9 @@ public static class Decimal128TextCodec
     // raises rather than taking the process down.
     // ------------------------------------------------------------------
 
+    /// <summary>
+    /// Unconditional abort marking unreachable code.
+    /// </summary>
     [DoesNotReturn]
     private static void impossible(string message)
     {
@@ -533,11 +536,10 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// <paramref name="out"/> is written on both paths -- the encoding on
-    /// success, the canonical positive quiet NaN on failure -- so the caller
-    /// never reads back what was there before the call. That is why a failure
-    /// is reported beside the value rather than in place of it: a caller who
-    /// discards the message still holds a legal IEEE 754-2019 datum.
+    /// The encoding is written on both paths -- the encoding on success, the canonical positive
+    /// quiet NaN on failure -- so the caller never reads back what was there before the call.
+    /// That is why a failure is reported beside the value rather than in place of it: a caller
+    /// who discards the message still holds a legal IEEE 754-2019 datum.
     /// </summary>
     private static string? parseInto(out UInt128 @out, bool formatIsBid, string str)
     {
@@ -793,22 +795,19 @@ public static class Decimal128TextCodec
     // ------------------------------------------------------------------
 
     /// <summary>
-    /// High 64 bits of the 128-bit product <c>x * y</c>.
+    /// Compute the high 64 bits of the 128-bit unsigned product <c>x * y</c>.
     /// </summary>
-    /// <remarks>
-    /// Where no unsigned 64-bit multiply-high exists this decomposes into four
-    /// 32x32 partial products; .NET has one, and the JIT turns it into the
-    /// machine's widening multiply.
-    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong mulhi64(ulong x, ulong y)
     {
+        // Where no unsigned 64-bit multiply-high exists this decomposes into four 32x32 partial
+        // products; .NET has one, and the JIT turns it into the machine's widening multiply.
         return Math.BigMul(x, y, out _);
     }
 
     /// <summary>
-    /// Bit length of a 128-bit value: the position of the highest set bit plus
-    /// one, and 0 for the zero value.
+    /// Compute the bit-length of a 128-bit unsigned value: the position of the highest set bit,
+    /// plus one. Returns 0 for the zero value.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int calcBitLen128(ulong dw1, ulong dw0)
@@ -823,13 +822,12 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Decimal digit count of a 128-bit value.
+    /// Compute the decimal digit count of a 128-bit unsigned value. Uses the standard
+    /// log10/log2 approximation: for any non-zero <c>bitLen</c>, <c>(bitLen * 1233) &gt;&gt;
+    /// 12</c> is <c>floor(bitLen * log10(2))</c>, which is either the exact digit count or one
+    /// too small. A single unsigned 128-bit compare against the next-larger power of 10 in
+    /// <c>POW10</c> resolves the off-by-one.
     /// </summary>
-    /// <remarks>
-    /// <c>(bitLen * 1233) >> 12</c> is <c>floor(bitLen * log10(2))</c>, which
-    /// is either the exact digit count or one too small; a single unsigned
-    /// compare against the next-larger power of ten resolves the off-by-one.
-    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int calcDigitLen128(ulong dw1, ulong dw0)
     {
@@ -846,8 +844,8 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Multiply a 64-bit value by <c>10^pow10</c> and add <paramref name="a"/>,
-    /// as a 128-bit result.
+    /// Multiply a 64-bit unsigned value <c>x</c> by <c>10^pow10</c> and add a 64-bit integer
+    /// <c>a</c>, producing the 128-bit result.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Words u128FmaPow10(ulong x, int pow10, ulong a)
@@ -866,15 +864,12 @@ public static class Decimal128TextCodec
     // ------------------------------------------------------------------
 
     /// <summary>
-    /// Divide a 113-bit value by <c>10^pow10</c> for <paramref name="pow10"/>
-    /// in <c>1..9</c>, returning the quotient and the remainder.
+    /// Divide a 113-bit unsigned coefficient by <c>10^pow10</c> for <c>pow10</c> in 1..9,
+    /// producing the quotient and the remainder. Factors <c>10^pow10</c> as <c>2^pow10 *
+    /// 5^pow10</c>: the low <c>pow10</c> bits are extracted directly as the low part of the
+    /// remainder, then the shifted value is divided by <c>5^pow10</c> using two hardware 64-bit
+    /// divides.
     /// </summary>
-    /// <remarks>
-    /// Table-free: <c>10^pow10</c> factors as <c>2^pow10 * 5^pow10</c>, so the
-    /// low <c>pow10</c> bits fall straight out as the low part of the remainder
-    /// and the shifted value is divided by <c>5^pow10</c> with two hardware
-    /// 64-bit divides.
-    /// </remarks>
     private static (ulong qHi, ulong qLo, ulong rem) u113DivModPow10Max9(ulong dwHi, ulong dwLo, int pow10)
     {
         verify(pow10 >= 1 && pow10 <= 9);
@@ -907,7 +902,10 @@ public static class Decimal128TextCodec
     // Residue -- how much was discarded, relative to half a ulp
     // ------------------------------------------------------------------
 
-    /// <summary>Classify a single discarded decimal digit 0..9.</summary>
+    /// <summary>
+    /// Classify a single discarded decimal digit (0..9) as <c>EXACT</c>, <c>LT_HALF</c>,
+    /// <c>HALF</c>, or <c>GT_HALF</c> via lookup in <c>DIGIT_MAP</c>.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int residueFromDecimalDigit(int digit)
     {
@@ -915,10 +913,9 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Combine a primary <paramref name="roundResidue"/> with a
-    /// <paramref name="stickyResidue"/> from less-significant digits, in the
-    /// round-bit-and-sticky-bit style. The sticky residue collapses to a single
-    /// nonzero bit which is OR'd into the low bit of the round residue.
+    /// Combine a primary <c>roundResidue</c> with a <c>stickyResidue</c> from less-significant
+    /// digits, in the round-bit-and-sticky-bit style. The sticky residue is collapsed to a
+    /// single "nonzero" bit and OR'd into the low bit of the round residue.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int residueMerge(int roundResidue, int stickyResidue)
@@ -928,13 +925,13 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Classify a 128-bit value relative to half of <c>10^pow10</c>.
+    /// Classify a 128-bit unsigned value relative to half of <c>10^pow10</c>, returning one of
+    /// <c>EXACT</c>, <c>LT_HALF</c>, <c>HALF</c>, or <c>GT_HALF</c>. Used in the underflow
+    /// boundary case where the entire coefficient is being discarded by truncation: the residue
+    /// is determined by where the coefficient falls relative to half-of-the-truncation-divisor.
+    /// Looks up <c>10^pow10</c> in the <c>POW10</c> table, halves it via a 128-bit shift right
+    /// by 1, and compares against the input as an unsigned 128-bit value.
     /// </summary>
-    /// <remarks>
-    /// Used in the underflow boundary case, where the entire coefficient is
-    /// discarded by truncation, so the residue is decided by where it falls
-    /// relative to half the truncation divisor.
-    /// </remarks>
     private static int residueFromValuePow10(ulong dw1, ulong dw0, int pow10)
     {
         if ((dw1 | dw0) == 0) {
@@ -956,10 +953,9 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Divide a 128-bit coefficient by <c>10^truncationNeeded</c>, returning
-    /// the quotient and the round-and-sticky residue class of what was
-    /// discarded. Truncates in chunks of up to 9 digits via
-    /// <see cref="u113DivModPow10Max9"/>.
+    /// Divide a 128-bit unsigned coefficient by <c>10^truncationNeeded</c>, producing the
+    /// quotient and the round-and-sticky residue class of what was discarded. Truncates in
+    /// chunks of up to 9 digits via <c>u113DivModPow10Max9</c>.
     /// </summary>
     private static (ulong hi, ulong lo, int residue) u128ScaleDownPow10(ulong dw1, ulong dw0, int truncationNeeded)
     {
@@ -995,13 +991,10 @@ public static class Decimal128TextCodec
     // ==================================================================
 
     /// <summary>
-    /// Decode a 10-bit DPD declet into <c>0..999</c>.
-    /// </summary>
-    /// <remarks>
-    /// Mapping: bit9..bit0 as <c>p q r s t u v w x y</c>. Accepts the 24
-    /// non-canonical declets as well as the 1000 canonical ones, per
+    /// Decode a 10-bit DPD declet (bits 9..0) into 0..999. Mapping: bit9..bit0 as p q r s t u v
+    /// w x y. Accepts the 24 non-canonical declets as well as the 1000 canonical ones, per
     /// Cowlishaw's dpd2bcd.
-    /// </remarks>
+    /// </summary>
     private static ulong dpdDecodeDeclet(ulong declet)
     {
         verify(declet <= 1023);
@@ -1054,14 +1047,11 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Encode <c>0..999</c> into a 10-bit DPD declet, per Cowlishaw's bcd2dpd.
+    /// Encode 0..999 into a 10-bit DPD declet, per Cowlishaw's bcd2dpd. The inverse of
+    /// <c>dpdDecodeDeclet</c> over canonical declets. Non-canonical declets decode to a value
+    /// that re-encodes to the canonical declet for that value, so <c>encode(decode(x)) == x</c>
+    /// only for canonical x.
     /// </summary>
-    /// <remarks>
-    /// The inverse of <see cref="dpdDecodeDeclet"/> over canonical declets. A
-    /// non-canonical declet decodes to a value that re-encodes to the canonical
-    /// declet for that value, so <c>encode(decode(x)) == x</c> only for
-    /// canonical <c>x</c>.
-    /// </remarks>
     private static ulong dpdEncodeDeclet(ulong n)
     {
         verify(n <= 999);
@@ -1115,13 +1105,10 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Decode up to seven packed DPD declets into a binary integer.
+    /// Decode up to seven packed DPD declets into a binary integer. Declets are ten bits each,
+    /// least significant first. The topmost may be narrower than ten bits, which is how the
+    /// coefficient's leading digit is carried: 0..9 encodes to itself as a declet.
     /// </summary>
-    /// <remarks>
-    /// Declets are ten bits each, least significant first. The topmost may be
-    /// narrower than ten bits, which is how the coefficient's leading digit is
-    /// carried: 0..9 encodes to itself as a declet.
-    /// </remarks>
     private static ulong binFromDeclets(ulong declets)
     {
         ulong bin = 0;
@@ -1139,9 +1126,8 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Encode a binary integer of at most 18 digits into six packed declets,
-    /// least significant first. The inverse of <see cref="binFromDeclets"/>
-    /// over that range.
+    /// Encode a binary integer of at most 18 digits into six packed declets, least significant
+    /// first. The inverse of <c>binFromDeclets</c> over that range.
     /// </summary>
     private static ulong decletsFromBin(ulong bin)
     {
@@ -1165,20 +1151,17 @@ public static class Decimal128TextCodec
     // ------------------------------------------------------------------
 
     /// <summary>
-    /// Render exactly 8 decimal digits of <paramref name="dw"/> into
-    /// <paramref name="ascii"/>, ending at <paramref name="offMaxx"/>. The
-    /// caller must ensure <c>dw &lt; 10^8</c>; fewer significant digits are
-    /// padded with leading zeros.
+    /// Render exactly 8 decimal digits of <c>dw</c> into <c>ascii</c>, ending at
+    /// <c>offMaxx</c>. Caller must ensure <c>dw &lt; 10^8</c>; the function pads with leading
+    /// zeros if <c>dw</c> has fewer than 8 significant digits. Implemented as a binary cascade:
+    /// / 10^4 once to split into two 4-digit halves, then / 10^2 twice to split each half into
+    /// two 2-digit pairs, then / 10 four times to extract individual digits. Always writes
+    /// exactly 8 bytes at offsets <c>offMaxx - 8</c> through <c>offMaxx - 1</c>.
     /// </summary>
-    /// <remarks>
-    /// A binary cascade: <c>÷ 10^4</c> once to split into two 4-digit halves,
-    /// then <c>÷ 10^2</c> twice to split each half into 2-digit pairs, then
-    /// <c>÷ 10</c> four times for the individual digits. The eight stores are
-    /// independent, and the single hoisted range check lets the JIT drop the
-    /// per-store bounds checks.
-    /// </remarks>
     private static void render8DigitsBeforeIndex(ulong dw, Span<byte> ascii, int offMaxx)
     {
+        // The eight stores are independent, and the single hoisted range check lets the JIT
+        // drop the per-store bounds checks.
         ulong abcd = mulhi64(dw, M_U64_DIV_1E4) >> S_U64_DIV_1E4;
         ulong efgh = dw - (abcd * 10000);
 
@@ -1211,24 +1194,26 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Render exactly <paramref name="renderDigitCount"/> decimal digits of
-    /// <paramref name="dw"/> into <paramref name="ascii"/>, ending at
-    /// <paramref name="offMaxx"/>. Fewer significant digits are padded with
-    /// leading zeros.
+    /// Render exactly <c>renderDigitCount</c> decimal digits of <c>dw</c> into <c>ascii</c>,
+    /// ending at <c>offMaxx</c>. Pads with leading zeros if <c>dw</c> has fewer significant
+    /// digits than <c>renderDigitCount</c>. Two phases:
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Two phases: peel 4 digits per iteration while at least 4 remain, then
-    /// one digit at a time for the remaining 0–3.
+    /// - While at least 4 digits remain: peel 4 digits per iteration via / 10^4 followed by a
+    ///   2-digit / 1-digit cascade.
+    /// - For the remaining 0..3 digits: peel one digit at a time via / 10 through reciprocal
+    ///   multiplication.
     /// </para>
     /// <para>
-    /// Kept private here. It is public in the legacy base this family descends
-    /// from, which was an accidental leak — nothing outside the codec ever
-    /// called it.
+    /// Always writes exactly <c>renderDigitCount</c> bytes at offsets <c>offMaxx -
+    /// renderDigitCount</c> through <c>offMaxx - 1</c>.
     /// </para>
     /// </remarks>
     private static void renderTailDigitsBeforeIndex(int renderDigitCount, ulong dw, Span<byte> ascii, int offMaxx)
     {
+        // Kept private here. It is public in the legacy base this family descends from, which
+        // was an accidental leak -- nothing outside the codec ever called it.
         ulong t = dw;
         int remainingDigitCount = renderDigitCount;
         int ib = offMaxx;
@@ -1263,30 +1248,27 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Render a 128-bit unsigned integer as <paramref name="digitPrintCount"/>
-    /// decimal digits into <paramref name="ascii"/>, ending at offset
-    /// <c>off + digitPrintCount</c>.
+    /// Render a 128-bit unsigned integer as <c>digitPrintCount</c> decimal digits into
+    /// <c>ascii</c>, ending at offset <c>off + digitPrintCount</c>. Three phases:
     /// </summary>
     /// <remarks>
-    /// <para>Three phases:</para>
-    /// <list type="number">
-    ///   <item>While <c>dw1T != 0</c>: peel 8 digits per outer iteration via
-    ///     three <c>÷ 10^8</c> divisions on rotating 96-bit chunks, using
-    ///     <see cref="mulhi64"/> for the high half of each multi-word
-    ///     divide.</item>
-    ///   <item>Once the value fits in 64 bits: peel 8 digits at a time via a
-    ///     single <c>÷ 10^8</c> per iteration.</item>
-    ///   <item>For 1–7 leftover digits: delegate to
-    ///     <see cref="renderTailDigitsBeforeIndex"/>.</item>
-    /// </list>
     /// <para>
-    /// The caller must have allocated at least <c>off + digitPrintCount</c>
-    /// bytes and is responsible for any leading-zero padding outside the
-    /// rendered range.
+    /// - While <c>dw1T != 0</c>: peel 8 digits per outer iteration via three / 10^8 divisions
+    ///   on rotating 96-bit chunks, using <c>mulhi64</c> for the high half of each multi-word
+    ///   divide.
+    /// - Once the value fits in 64 bits: peel 8 digits at a time via a single / 10^8 per
+    ///   iteration.
+    /// - For 1..7 leftover digits: delegate to <c>renderTailDigitsBeforeIndex</c>.
+    /// </para>
+    /// <para>
+    /// Each 8-digit chunk is rendered by <c>render8DigitsBeforeIndex</c>. The caller must have
+    /// allocated a buffer with at least <c>off + digitPrintCount</c> bytes, and is responsible
+    /// for any leading-zero padding outside the rendered range.
     /// </para>
     /// </remarks>
     private static int u128ToAscii(int digitPrintCount, ulong dw1, ulong dw0, Span<byte> ascii, int off)
     {
+        // Returns digitPrintCount, unchanged from the input.
         ulong dw1T = dw1;
         ulong dw0T = dw0;
         int ich = off + digitPrintCount;
@@ -1325,8 +1307,8 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Write a signed decimal exponent at <paramref name="off"/>, returning its
-    /// length. The magnitude never exceeds 6176, so it is at most four digits.
+    /// Write a signed decimal exponent at <c>off</c>, returning its length. The magnitude never
+    /// exceeds 6176, so it is at most four digits.
     /// </summary>
     private static int appendInt(Span<byte> @out, int off, int v)
     {
@@ -1411,8 +1393,8 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Format a finite non-zero value with <c>qExp == 0</c> as a plain integer
-    /// sequence: no radix point, no exponent.
+    /// Format a finite non-zero value with qExp == 0 as a plain integer sequence: no radix
+    /// point, no exponent.
     /// </summary>
     private static int fnzToIntegerAscii(Span<byte> @out, bool sign, int digitLen, ulong dw1, ulong dw0)
     {
@@ -1426,15 +1408,11 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Format a finite non-zero value in fixed-point notation, with an explicit
-    /// radix point and the appropriate number of leading zeros —
-    /// <c>"0.00012345"</c>.
+    /// Format a finite non-zero value in fixed-point notation, with an explicit radix point and
+    /// the appropriate number of leading zeros -- "0.00012345". Renders the coefficient digits,
+    /// then shifts the trailing digits right by one position to open a slot for the radix
+    /// point. Leading zeros are written directly into the buffer before the digits.
     /// </summary>
-    /// <remarks>
-    /// Renders the coefficient digits, then shifts the trailing digits right by
-    /// one position to open a slot for the radix point. Leading zeros are
-    /// written directly into the buffer before the digits.
-    /// </remarks>
     private static int fnzToDecimalPointAscii(Span<byte> @out, bool sign, int qExp, int digitLen, ulong dw1, ulong dw0)
     {
         int digitsRightOfDecimal = -qExp;
@@ -1459,16 +1437,12 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Format a finite non-zero value in normalized scientific notation —
-    /// <c>"1.234E+5"</c>, <c>"-9.99E-200"</c>.
+    /// Format a finite non-zero value in normalized scientific notation -- "1.234E+5",
+    /// "-9.99E-200". Renders the coefficient digits, inserts a radix point after the leading
+    /// digit when there is more than one, then appends E, the exponent sign and the absolute
+    /// exponent. The sign is always written: + for non-negative exponents, - for negative, per
+    /// the GDAS to-scientific-string form.
     /// </summary>
-    /// <remarks>
-    /// Renders the coefficient digits, inserts a radix point after the leading
-    /// digit when there is more than one, then appends <c>E</c>, the exponent
-    /// sign and the absolute exponent. The sign is always written: <c>+</c> for
-    /// non-negative exponents, <c>-</c> for negative, per the GDAS
-    /// <c>to-scientific-string</c> form.
-    /// </remarks>
     private static int fnzToNormalizedScientificAscii(Span<byte> @out, bool sign, int qExp, int digitLen, ulong dw1, ulong dw0)
     {
         verify(digitLen > 0);
@@ -1507,9 +1481,9 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Finite non-zero: pick the form. Integer when the quantum exponent is
-    /// zero, fixed-point when it is negative and the adjusted exponent is at
-    /// least <c>-6</c>, scientific otherwise — the GDAS auto-select rule.
+    /// Finite non-zero: pick the form. Integer when the quantum exponent is zero, fixed-point
+    /// when it is negative and the adjusted exponent is at least -6, scientific otherwise --
+    /// the GDAS auto-select rule.
     /// </summary>
     private static int fnzAscii(Span<byte> @out, bool sign, int qExp, ulong dw1, ulong dw0)
     {
@@ -1552,18 +1526,16 @@ public static class Decimal128TextCodec
     // not wanted. The one exception is a TRAILING '+' in the exponent-form
     // zero, noted where it happens.
     // ==================================================================
+
     /// <summary>
-    /// Render a BID128 encoding into the caller's buffer.
+    /// Render a BID128 encoding into the caller's buffer. Field extraction follows IEEE
+    /// 754-2019 section 3.5.2; the class it lands on -- Infinity, NaN (quiet or signaling, with
+    /// optional payload), zero (canonical or non-canonical), or finite non-zero -- picks the
+    /// leaf renderer.
     /// </summary>
-    /// <remarks>
-    /// Field extraction follows IEEE 754-2019 §3.5.2; the class it lands on
-    /// — Infinity, NaN (quiet or signaling, with optional payload), zero
-    /// (canonical or non-canonical), or finite non-zero — picks the leaf
-    /// renderer. <see cref="Bid128ToString(UInt128)"/> and
-    /// <see cref="Bid128ToAscii(byte[], UInt128)"/> both wrap what this writes.
-    /// </remarks>
     private static int decodeBid128toAscii(Span<byte> @out, ulong bid128Hi, ulong bid128Lo)
     {
+        // Bid128ToString and Bid128ToAscii both wrap what this writes.
         // IEEE754-2019 Table 3.6 -- Decimal interchange format parameters, p 23
         const int t = T_WIDTH; // trailing significand field width in bits
         verify(1 + W5 + t == K_WIDTH);
@@ -1638,13 +1610,10 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Render a DPD128 encoding into the caller's buffer.
+    /// Render a DPD128 encoding into the caller's buffer. The peer of
+    /// <c>decodeBid128toAscii</c>: both reduce an encoding to (sign, qExp, coefficient) and
+    /// then dispatch to the same leaf renderers, which have never seen an interchange format.
     /// </summary>
-    /// <remarks>
-    /// The peer of <see cref="decodeBid128toAscii"/>: both reduce an encoding
-    /// to <c>(sign, qExp, coefficient)</c> and then dispatch to the same leaf
-    /// renderers, which have never seen an interchange format.
-    /// </remarks>
     private static int decodeDpd128toAscii(Span<byte> @out, ulong dpd128Hi, ulong dpd128Lo)
     {
         const int w = 12;      // exponent continuation width
@@ -1733,14 +1702,12 @@ public static class Decimal128TextCodec
     // ------------------------------------------------------------------
 
     /// <summary>
-    /// Pack the sign, biased quantum exponent and 113-bit coefficient into the
-    /// BID128 encoding.
+    /// Pack the sign, biased quantum exponent, and 113-bit coefficient into the BID128
+    /// encoding. Always uses the short-form encoding (combination field top bits not 11), which
+    /// is correct for any canonical coefficient whose top 3 bits fit in 0..7. Preconditions:
+    /// the exponent must be in [-6176, 6111] and the coefficient must have at most 34 decimal
+    /// digits.
     /// </summary>
-    /// <remarks>
-    /// Always the short-form encoding — combination-field top bits not
-    /// <c>11</c> — which is correct for any canonical coefficient, since its
-    /// top 3 bits necessarily fit in 0..7.
-    /// </remarks>
     private static Words bid128SetFinite(bool sign, int qExp, ulong dw1, ulong dw0)
     {
         verify(qExp >= Q_MIN && qExp <= Q_MAX);
@@ -1752,17 +1719,13 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Pack a finite value into DPD128. The peer of
-    /// <see cref="bid128SetFinite"/>: same inputs, same sign bit, same 14-bit
-    /// biased exponent, and a coefficient of the same 34 digits — laid out as a
-    /// leading digit carried in the combination field plus eleven declets.
+    /// Pack a finite value into DPD128. The peer of <c>bid128SetFinite</c>: same inputs, same
+    /// sign bit, same 14-bit biased exponent, and a coefficient of the same 34 digits -- laid
+    /// out as a leading digit carried in the combination field plus eleven declets. The leading
+    /// digit cannot be packed independently of the exponent: DPD puts it in the same five-bit
+    /// prefix as the exponent's top two bits, so unlike BID there is no shared "pack sign and
+    /// exponent" step to factor out.
     /// </summary>
-    /// <remarks>
-    /// The leading digit cannot be packed independently of the exponent: DPD
-    /// puts it in the same five-bit prefix as the exponent's top two bits, so
-    /// unlike BID there is no shared "pack sign and exponent" step to factor
-    /// out.
-    /// </remarks>
     private static Words dpd128SetFinite(bool sign, int qExp, ulong dw1, ulong dw0)
     {
         verify(qExp >= Q_MIN && qExp <= Q_MAX);
@@ -1796,15 +1759,12 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Pack a finite value into whichever interchange format the caller asked
-    /// for.
+    /// Pack a finite value into whichever interchange format the caller asked for. BID and DPD
+    /// are peers: both carry the same sign, the same 14-bit biased exponent and the same
+    /// 34-digit coefficient, and differ only in how that coefficient is laid out. Everything
+    /// upstream of this point -- rounding, clamping and the underflow region -- is
+    /// format-neutral.
     /// </summary>
-    /// <remarks>
-    /// BID and DPD are peers: both carry the same sign, the same 14-bit biased
-    /// exponent and the same 34-digit coefficient, and differ only in how that
-    /// coefficient is laid out. Everything upstream of this point — rounding,
-    /// clamping and the underflow region — is format-neutral.
-    /// </remarks>
     private static Words setFinite(bool formatIsBid, bool sign, int qExp, ulong dw1, ulong dw0)
     {
         return (formatIsBid)
@@ -1820,10 +1780,9 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Pack a NaN into DPD128. The payload occupies the whole 110-bit trailing
-    /// field as eleven declets — 33 digits, with no leading digit in the
-    /// combination field, since G0..G4 are fixed at 11111 and G5 carries the
-    /// signaling flag.
+    /// Pack a NaN into DPD128. The payload occupies the whole 110-bit trailing field as eleven
+    /// declets -- 33 digits, with no leading digit in the combination field, since G0..G4 are
+    /// fixed at 11111 and G5 carries the signaling flag.
     /// </summary>
     private static Words dpd128SetNaN(bool sign, bool isSignaling, ulong payloadDw1, ulong payloadDw0)
     {
@@ -1843,14 +1802,11 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Pack a NaN into whichever interchange format the caller asked for.
+    /// Pack a NaN into whichever interchange format the caller asked for. A NaN payload is a
+    /// coefficient, so the formats diverge here exactly as they do for finite values: BID keeps
+    /// it as a binary integer, DPD as declets. Infinity by contrast has no coefficient, which
+    /// is why it is byte-identical in both and needs no such split.
     /// </summary>
-    /// <remarks>
-    /// A NaN payload is a coefficient, so the formats diverge here exactly as
-    /// they do for finite values: BID keeps it as a binary integer, DPD as
-    /// declets. Infinity by contrast has no coefficient, which is why it is
-    /// byte-identical in both and needs no such split.
-    /// </remarks>
     private static Words setNaN(bool formatIsBid, bool sign, bool isSignaling,
                                 ulong payloadDw1, ulong payloadDw0)
     {
@@ -1863,22 +1819,21 @@ public static class Decimal128TextCodec
     // Finalize: rounding, clamping, underflow
     // ------------------------------------------------------------------
 
-    /// <summary>Encode <c>Infinity</c>, or <c>-Infinity</c>.</summary>
+    /// <summary>
+    /// Encode Infinity (or -Infinity).
+    /// </summary>
     private static Words finalizeOverflow(bool sign)
     {
         return (((sign) ? SIGN_BIT : 0) | INF_PATTERN_HI, 0);
     }
 
     /// <summary>
-    /// Test whether a coefficient/exponent pair fits as a canonical encoding:
-    /// exponent in <c>Q_MIN..Q_MAX</c> and coefficient in <c>0..10^34-1</c>.
-    /// </summary>
-    /// <remarks>
-    /// The fast path uses the high word's leading-zero count to cheaply confirm
-    /// the coefficient has at most 113 bits, in which case it is necessarily
-    /// below 10^34, since 2^113 &gt; 10^34. The slow path compares against
+    /// Test whether a coefficient/exponent pair fits as a canonical encoding: exponent in
+    /// [-6176, 6111] and coefficient in [0, 10^34). Fast path uses the leading-zero bit count
+    /// of the high word to cheaply confirm the coefficient has at most 113 bits, in which case
+    /// it is necessarily less than 10^34 (since 2^113 &gt; 10^34). Slow path compares against
     /// 10^34.
-    /// </remarks>
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool coeffQExpFit(ulong dw1, ulong dw0, int qExp)
     {
@@ -1894,16 +1849,13 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Encode a finite value whose natural quantum exponent exceeds
-    /// <c>Q_MAX</c> but whose coefficient has enough leading capacity to absorb
-    /// the excess.
+    /// Encode a finite value whose natural quantum exponent exceeds qMax (6111) but whose
+    /// coefficient has enough leading capacity to absorb the excess. Multiplies the coefficient
+    /// by 10^qExcess (where qExcess is qExp minus 6111), reducing the exponent to exactly 6111.
+    /// This preserves the value while bringing the encoding into representable range. Caller
+    /// must have verified that the coefficient has enough room (digitLen + qExcess &lt;= 34);
+    /// this function asserts the invariant and produces the clamped encoding.
     /// </summary>
-    /// <remarks>
-    /// Multiplies the coefficient by <c>10^qExcess</c>, reducing the exponent
-    /// to exactly <c>Q_MAX</c>. This preserves the value while bringing the
-    /// encoding into representable range. The caller must have verified there
-    /// is room (<c>digitLen + qExcess &lt;= 34</c>).
-    /// </remarks>
     private static Words finalizeClamping(bool formatIsBid, bool sign, int qExp, ulong dw1, ulong dw0)
     {
         int qExcess = qExp - Q_MAX;
@@ -1926,17 +1878,13 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Handle the underflow boundary case, where the most-significant digit of
-    /// the coefficient sits exactly one position right of the representable
-    /// range.
+    /// Handle the underflow boundary case where the most-significant digit of the coefficient
+    /// sits exactly one position to the right of the representable range. The coefficient value
+    /// itself determines rounding: comparing the coefficient against (10^digitLen) / 2 yields
+    /// the residue class. Combined with any incoming residue, this drives a roundTiesToEven
+    /// decision between zero (always even, the default outcome) and 1 ulp (the smallest
+    /// subnormal, only when total residue is <c>GT_HALF</c>).
     /// </summary>
-    /// <remarks>
-    /// The coefficient value itself decides the rounding: comparing it against
-    /// <c>(10^digitLen) / 2</c> yields the residue class. Combined with any
-    /// incoming residue that drives a ties-to-even decision between zero —
-    /// always even, and the default outcome — and 1 ulp, the smallest
-    /// subnormal, reached only when the total residue is GT_HALF.
-    /// </remarks>
     private static Words finalizeUnderflowBoundary(bool formatIsBid, bool sign,
                                                    ulong dw1, ulong dw0, int residueIn)
     {
@@ -1949,6 +1897,10 @@ public static class Decimal128TextCodec
         return setFinite(formatIsBid, sign, Q_MIN, 0, (totalResidue == GT_HALF) ? 1UL : 0UL);
     }
 
+    /// <summary>
+    /// Representable as a subnormal: truncate to the minimum exponent, keeping what precision
+    /// survives, and round what is left.
+    /// </summary>
     private static Words finalizeSubnormal(bool formatIsBid, bool sign, int qExpIn,
                                            ulong dw1In, ulong dw0In, int residueIn)
     {
@@ -1978,15 +1930,18 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Dispatch underflow handling for a value whose exponent is below Emin.
+    /// Dispatch underflow handling for a value whose exponent is below Emin (-6176). Three
+    /// cases:
     /// </summary>
     /// <remarks>
-    /// Three cases: truncation needed exceeds the digit count, so the result is
-    /// zero, the value being below half the smallest subnormal; truncation
-    /// equals the digit count, a boundary case where the leading digit of the
-    /// coefficient decides the rounding; or truncation is less than the digit
-    /// count, representable as a subnormal with some precision preserved and
-    /// rounding applied.
+    /// <para>
+    /// - Truncation needed exceeds the digit count: result is zero (the value is below half the
+    ///   smallest subnormal).
+    /// - Truncation equals the digit count: boundary case where the leading digit of the
+    ///   coefficient determines rounding.
+    /// - Truncation is less than the digit count: representable as a subnormal; some precision
+    ///   is preserved, with rounding.
+    /// </para>
     /// </remarks>
     private static Words finalizeUnderflowRegion(bool formatIsBid, bool sign, int qExp,
                                                  ulong dw1, ulong dw0, int residue)
@@ -2008,46 +1963,41 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Round a parsed coefficient/exponent pair to ties-to-even and finalize it
-    /// into an encoding.
+    /// Round and finalize a finite parsed coefficient/exponent pair into its encoding.
+    /// Implements roundTiesToEven rounding with full handling of the decimal128 boundary
+    /// conditions: oversized coefficient, underflow to subnormal or zero, overflow to infinity,
+    /// and the clamped-near-Emax region where a finite value with too-large quantum exponent
+    /// can be representable by absorbing the excess into the coefficient.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Full handling of the decimal128 boundary conditions: underflow to
-    /// subnormal or zero, overflow to infinity, and the clamped-near-Emax
-    /// region where a finite value with too-large quantum exponent is still
-    /// representable by absorbing the excess into the coefficient.
+    /// Step 1 (fast path): if the input already fits within precision and range and no rounding
+    /// is required (residue &lt;= <c>LT_HALF</c>, or <c>HALF</c> with an even retained low
+    /// bit), encode and return immediately. This picks up the vast majority of cases.
     /// </para>
     /// <para>
-    /// Step 1 (fast path): if the input already fits within precision and range
-    /// and no rounding is required — residue at most LT_HALF, or HALF with an
-    /// even retained low bit — encode and return immediately. This picks up the
-    /// vast majority of cases.
+    /// Step 2 (zero coefficient): zeros that are out of qExp range get clamped to the valid
+    /// range.
     /// </para>
     /// <para>
-    /// Step 2 (zero coefficient): zeros with an out-of-range qExp get clamped
-    /// into range.
+    /// Step 3 (special values): not applicable here -- special values are handled by callers
+    /// before reaching this function.
     /// </para>
     /// <para>
-    /// Step 3 (special values): not applicable — specials are handled by the
-    /// callers before reaching here.
+    /// Step 4 (underflow): if the exponent is below Emin, divert to
+    /// <c>finalizeUnderflowRegion</c> for subnormal handling.
     /// </para>
     /// <para>
-    /// Step 4 (underflow): below Emin, divert to
-    /// <see cref="finalizeUnderflowRegion"/>.
+    /// Step 5 (precision truncation): REMOVED as unreachable from a codec's callers -- see the
+    /// note in the body, which also states what would have to change for it to be needed again.
     /// </para>
     /// <para>
-    /// Step 5 (precision truncation): REMOVED as unreachable from a codec's
-    /// callers — see the note in the body, which also states what would have to
-    /// change for it to be needed again.
-    /// </para>
-    /// <para>
-    /// Step 6 (rounding): apply ties-to-even. If rounding rolls the coefficient
+    /// Step 6 (rounding): apply roundTiesToEven. If rounding causes the coefficient to roll
     /// over to 10^34, normalize to 10^33 and increment the exponent.
     /// </para>
     /// <para>
-    /// Step 7 (overflow / clamping): above Emax, either absorb the excess into
-    /// the coefficient or overflow to infinity.
+    /// Step 7 (overflow / clamping): if the exponent exceeds Emax, either absorb the excess
+    /// into the coefficient (clamping near Emax) or overflow to infinity.
     /// </para>
     /// </remarks>
     private static Words roundAndFinalizeFinite(bool formatIsBid, bool sign, int qExpIn,
@@ -2151,45 +2101,41 @@ public static class Decimal128TextCodec
     // ------------------------------------------------------------------
 
     /// <summary>
-    /// The code of the character at <paramref name="index"/>, or -1 past the
-    /// end of the string.
+    /// The code of the character at <c>index</c>, or -1 past the end of the input. The parsers
+    /// walk the input as character codes, so end-of-input is one more code value rather than a
+    /// bound test at every read.
     /// </summary>
-    /// <remarks>
-    /// The parsers walk the input as character codes, so end-of-input is one
-    /// more code value rather than a bound test at every read. -1 is not a
-    /// character, which keeps NUL an ordinary input character — and an invalid
-    /// one — instead of doubling as the terminator. A .NET
-    /// <see cref="string"/> is randomly indexable, so the parsers walk it by
-    /// index rather than through a cursor. Every character a numeral can
-    /// contain is ASCII, so a non-ASCII code unit fails every test below and is
-    /// rejected as an unrecognized character.
-    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int codeAt(string str, int index)
     {
+        // -1 is not a character, which keeps NUL an ordinary input character -- and an invalid
+        // one -- instead of doubling as the terminator. A .NET string is randomly indexable, so
+        // the parsers walk it by index rather than through a cursor. Every character a numeral
+        // can contain is ASCII, so a non-ASCII code unit fails every test below and is rejected
+        // as an unrecognized character.
         return (index >= 0 && index < str.Length) ? str[index] : -1;
     }
 
+    /// <summary>
+    /// The digit test, spelled out once: <c>true</c> for '0' through '9' and nothing else.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool isDigit(int ch) => (ch >= ascii_0 && ch <= ascii_9);
 
     /// <summary>
-    /// Parse a finite decimal numeral: an optional radix point, an optional
-    /// <c>E</c>/<c>e</c> exponent with an optional sign, and any number of
-    /// digits.
+    /// Parse a finite decimal numeral and produce the corresponding encoding. Accepts an
+    /// optional decimal point, an optional E/e exponent (with optional +/- sign), and any
+    /// number of significant digits. Coefficients with more than 34 significant digits are
+    /// accepted; leading zeros before a non-zero digit are flushed; the digits past 34 are
+    /// properly tracked as residue for subsequent roundTiesToEven rounding. Excess exponent
+    /// magnitudes are clamped to 9999, which is sufficient for the rounding logic to detect
+    /// overflow or underflow.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Coefficients with more than 34 significant digits are accepted; leading
-    /// zeros before a non-zero digit are flushed, and the digits past 34 are
-    /// tracked as <c>residue</c> for the ties-to-even rounding that follows.
-    /// Excess exponent magnitudes clamp to 9999, which is enough for the
-    /// rounding logic to detect overflow or underflow.
-    /// </para>
-    /// <para>
-    /// Sign comes from <paramref name="sign"/>, already consumed by the
-    /// dispatcher; <paramref name="chFirst"/> is the first digit or <c>.</c>
-    /// and is processed by the main loop.
+    /// Sign is taken from the <c>sign</c> parameter (already consumed by the dispatcher); the
+    /// leading character <c>chFirst</c> is the first digit or <c>.</c> and is processed by the
+    /// main loop.
     /// </para>
     /// </remarks>
     private static string? parseFiniteValueText(ref Words @out, bool formatIsBid, bool sign,
@@ -2357,8 +2303,8 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Parse the keyword <c>Infinity</c>, or its 3-letter abbreviation
-    /// <c>Inf</c>, case-insensitively.
+    /// Parse the keyword Infinity (or its 3-letter abbreviation Inf), case-insensitively, and
+    /// produce the corresponding encoding. Any other input is rejected.
     /// </summary>
     private static string? parseInfinityText(ref Words @out, bool sign, int chFirst, string str, int startPos)
     {
@@ -2391,43 +2337,33 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Parse <c>NaN</c>, <c>qNaN</c> or <c>sNaN</c> — case-insensitive — with
-    /// an optional decimal payload.
+    /// Parse NaN, qNaN, or sNaN (case-insensitive) with an optional decimal payload, and
+    /// produce the corresponding encoding. Payloads of 34+ digits AS WRITTEN are non-canonical
+    /// and produce a zero payload per IEEE 754-2019 section 3.5.2.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Payloads of 34+ digits AS WRITTEN are non-canonical and produce a zero
-    /// payload per IEEE 754-2019 §3.5.2.
+    /// The payload may be written bare (<c>NaN123</c>) or enclosed in parentheses
+    /// (<c>NaN(123)</c>). The parenthesised form is positional and balanced: the <c>(</c> must
+    /// follow the word immediately, at least one digit must appear, and the <c>)</c> must be
+    /// the last character of the input. So <c>NaN(1)2(3)</c>, <c>NaN(1</c>, <c>NaN(1]</c> and
+    /// <c>NaN()</c> are all rejected, and <c>NaN[1]</c> / <c>NaN{1}</c> are not this form at
+    /// all.
     /// </para>
     /// <para>
-    /// The payload may be written bare (<c>NaN123</c>) or enclosed in
-    /// parentheses (<c>NaN(123)</c>). The parenthesised form is positional and
-    /// balanced: the <c>(</c> must follow the word immediately, at least one
-    /// digit must appear, and the <c>)</c> must be the last character of the
-    /// input. So <c>NaN(1)2(3)</c>, <c>NaN(1</c>, <c>NaN(1]</c> and
-    /// <c>NaN()</c> are all rejected, and <c>NaN[1]</c> and <c>NaN{1}</c> are
-    /// not this form at all.
-    /// </para>
-    /// <para>
-    /// The reason this spelling exists at all
-    /// is that the platform's own <c>strtod</c> reads
-    /// <c>NAN(n-char-sequence)</c>, so the
-    /// spelling reaches a caller from the platform itself. The resemblance
-    /// stops at the parentheses — strtod's sequence is letters, digits and
-    /// underscores read as an implementation-defined integer (<c>NAN(abc)</c>
-    /// and <c>NAN(0x1c8)</c> are legal there), while a decimal128 payload is
-    /// decimal digits. This is a paren-tolerant spelling of our own payload
-    /// syntax, not strtod's.
-    /// </para>
-    /// <para>
-    /// The legacy base this family descends from skipped the six bracket
-    /// characters ANYWHERE, so it read <c>NaN(1)2(3)</c> as payload 123. That
-    /// is not this, and stays rejected.
+    /// The reason this spelling exists at all is that the platform's own <c>strtod</c> reads
+    /// <c>NAN(n-char-sequence)</c>, so the spelling reaches a caller from the platform itself.
+    /// The resemblance stops at the parentheses -- <c>strtod</c>'s sequence is letters, digits
+    /// and underscores read as an implementation-defined integer (<c>NAN(abc)</c> and
+    /// <c>NAN(0x1c8)</c> are legal there), while a decimal128 payload is decimal digits. This
+    /// is a paren-tolerant spelling of our own payload syntax, not <c>strtod</c>'s.
     /// </para>
     /// </remarks>
     private static string? parseNanText(ref Words @out, bool formatIsBid, bool sign,
                                         int chFirst, string str, int startPos)
     {
+        // The legacy base this family descends from skipped the six bracket characters
+        // ANYWHERE, so it read NaN(1)2(3) as payload 123. That is not this, and stays rejected.
         int pos = startPos;
         int ch = chFirst;
         bool hasS = ((ch | 0x20) == 's');
@@ -2526,13 +2462,11 @@ public static class Decimal128TextCodec
     }
 
     /// <summary>
-    /// Top-level dispatcher. Reads an optional sign, then dispatches by leading
-    /// character to the finite-value, infinity or NaN parser.
+    /// Top-level dispatcher for parsing a decimal character sequence into an encoding. Reads
+    /// optional sign, then dispatches by leading character to the finite-value, infinity, or
+    /// NaN parser. The leading character is also passed through to the dispatched parser so it
+    /// doesn't have to re-read what the dispatcher already consumed.
     /// </summary>
-    /// <remarks>
-    /// The leading character is passed through to the dispatched parser so it
-    /// does not have to re-read what the dispatcher already consumed.
-    /// </remarks>
     private static string? encodeStringOrError(ref Words @out, bool formatIsBid, string str)
     {
         int pos = 0;

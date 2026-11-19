@@ -319,14 +319,14 @@ public static class Decimal128TextCodec
     /// text.
     /// </para>
     /// </remarks>
-    /// <param name="destination">the destination, at least <see
+    /// <param name="out">the destination, at least <see
     /// cref="MaxLen"/> bytes.</param>
     /// <param name="bits">the BID128 encoding.</param>
     /// <returns>the number of bytes written.</returns>
-    public static int Bid128ToAscii(byte[] destination, UInt128 bits)
+    public static int Bid128ToAscii(byte[] @out, UInt128 bits)
     {
-        ArgumentNullException.ThrowIfNull(destination);
-        return decodeBid128toAscii(destination, hiWord(bits), loWord(bits));
+        ArgumentNullException.ThrowIfNull(@out);
+        return decodeBid128toAscii(@out, hiWord(bits), loWord(bits));
     }
 
     /// <summary>
@@ -360,14 +360,14 @@ public static class Decimal128TextCodec
     /// text.
     /// </para>
     /// </remarks>
-    /// <param name="destination">the destination, at least <see
+    /// <param name="out">the destination, at least <see
     /// cref="MaxLen"/> bytes.</param>
     /// <param name="bits">the DPD128 encoding.</param>
     /// <returns>the number of bytes written.</returns>
-    public static int Dpd128ToAscii(byte[] destination, UInt128 bits)
+    public static int Dpd128ToAscii(byte[] @out, UInt128 bits)
     {
-        ArgumentNullException.ThrowIfNull(destination);
-        return decodeDpd128toAscii(destination, hiWord(bits), loWord(bits));
+        ArgumentNullException.ThrowIfNull(@out);
+        return decodeDpd128toAscii(@out, hiWord(bits), loWord(bits));
     }
 
     /// <summary>
@@ -441,14 +441,14 @@ public static class Decimal128TextCodec
     /// the same bit pattern in both.
     /// </para>
     /// </remarks>
-    /// <param name="value">receives the BID128 encoding, or the canonical
+    /// <param name="out">receives the BID128 encoding, or the canonical
     /// positive quiet NaN on failure. Always written.</param>
-    /// <param name="text">the character sequence to parse.</param>
+    /// <param name="str">the character sequence to parse.</param>
     /// <returns><c>null</c> on success, or a human-readable message on
     /// failure.</returns>
-    public static string? Bid128Parse(out UInt128 value, string text)
+    public static string? Bid128Parse(out UInt128 @out, string str)
     {
-        return parseInto(out value, formatIsBid: true, text: text);
+        return parseInto(out @out, formatIsBid: true, str: str);
     }
 
     /// <summary>
@@ -522,32 +522,32 @@ public static class Decimal128TextCodec
     /// the same bit pattern in both.
     /// </para>
     /// </remarks>
-    /// <param name="value">receives the DPD128 encoding, or the canonical
+    /// <param name="out">receives the DPD128 encoding, or the canonical
     /// positive quiet NaN on failure. Always written.</param>
-    /// <param name="text">the character sequence to parse.</param>
+    /// <param name="str">the character sequence to parse.</param>
     /// <returns><c>null</c> on success, or a human-readable message on
     /// failure.</returns>
-    public static string? Dpd128Parse(out UInt128 value, string text)
+    public static string? Dpd128Parse(out UInt128 @out, string str)
     {
-        return parseInto(out value, formatIsBid: false, text: text);
+        return parseInto(out @out, formatIsBid: false, str: str);
     }
 
     /// <summary>
-    /// <paramref name="value"/> is written on both paths -- the encoding on
+    /// <paramref name="out"/> is written on both paths -- the encoding on
     /// success, the canonical positive quiet NaN on failure -- so the caller
     /// never reads back what was there before the call. That is why a failure
     /// is reported beside the value rather than in place of it: a caller who
     /// discards the message still holds a legal IEEE 754-2019 datum.
     /// </summary>
-    private static string? parseInto(out UInt128 value, bool formatIsBid, string text)
+    private static string? parseInto(out UInt128 @out, bool formatIsBid, string str)
     {
-        ArgumentNullException.ThrowIfNull(text);
+        ArgumentNullException.ThrowIfNull(str);
         Words words = (0, 0);
-        string? errorStr = encodeStringOrError(ref words, formatIsBid: formatIsBid, str: text);
+        string? errorStr = encodeStringOrError(ref words, formatIsBid: formatIsBid, str: str);
         if (errorStr != null) {
             words = (QNAN_PATTERN_HI, 0);
         }
-        value = joinWords(words);
+        @out = joinWords(words);
         return errorStr;
     }
 
@@ -1328,13 +1328,13 @@ public static class Decimal128TextCodec
     /// Write a signed decimal exponent at <paramref name="off"/>, returning its
     /// length. The magnitude never exceeds 6176, so it is at most four digits.
     /// </summary>
-    private static int appendInt(Span<byte> ascii, int off, int v)
+    private static int appendInt(Span<byte> @out, int off, int v)
     {
         int signLen = 0;
         int magnitude = v;
         if (v < 0)
         {
-            ascii[off] = ascii_minus;
+            @out[off] = ascii_minus;
             signLen = 1;
             magnitude = -v;
         }
@@ -1348,7 +1348,7 @@ public static class Decimal128TextCodec
         } else {
             digitLen = 1;
         }
-        renderTailDigitsBeforeIndex(digitLen, (ulong)magnitude, ascii, off + signLen + digitLen);
+        renderTailDigitsBeforeIndex(digitLen, (ulong)magnitude, @out, off + signLen + digitLen);
         return signLen + digitLen;
     }
 
@@ -1356,23 +1356,23 @@ public static class Decimal128TextCodec
     // Rendering a decoded value
     // ------------------------------------------------------------------
 
-    private static int infAscii(Span<byte> ascii, bool sign)
+    private static int infAscii(Span<byte> @out, bool sign)
     {
         int signLen = (sign) ? 1 : 0;
-        ascii[0] = ascii_minus; // overwritten by the 'I' when unsigned
-        InfinityText.CopyTo(ascii[signLen..]);
+        @out[0] = ascii_minus; // overwritten by the 'I' when unsigned
+        InfinityText.CopyTo(@out[signLen..]);
         return signLen + InfinityText.Length;
     }
 
-    private static int nanAscii(Span<byte> ascii, bool sign, bool isSignaling, ulong payloadHi, ulong payloadLo)
+    private static int nanAscii(Span<byte> @out, bool sign, bool isSignaling, ulong payloadHi, ulong payloadLo)
     {
         int signLen = (sign) ? 1 : 0;
         int sLen = (isSignaling) ? 1 : 0;
         int wordOff = signLen + sLen;
         int baseLen = wordOff + NanText.Length;
-        ascii[0] = ascii_minus;   // overwritten by the 's' or the 'N' when unsigned
-        ascii[signLen] = ascii_s; // overwritten by the 'N' when quiet
-        NanText.CopyTo(ascii[wordOff..]);
+        @out[0] = ascii_minus;   // overwritten by the 's' or the 'N' when unsigned
+        @out[signLen] = ascii_s; // overwritten by the 'N' when quiet
+        NanText.CopyTo(@out[wordOff..]);
         if ((payloadHi | payloadLo) == 0 ||
             // non canonical IEEE 754-2019 3.5.2 c) 2)
             MAX_PAYLOAD_HI < payloadHi ||
@@ -1381,19 +1381,19 @@ public static class Decimal128TextCodec
             return baseLen;
         }
         int digitLen = calcDigitLen128(payloadHi, payloadLo);
-        u128ToAscii(digitLen, payloadHi, payloadLo, ascii, baseLen);
+        u128ToAscii(digitLen, payloadHi, payloadLo, @out, baseLen);
         return baseLen + digitLen;
     }
 
-    private static int zerAscii(Span<byte> ascii, bool sign, int qExp)
+    private static int zerAscii(Span<byte> @out, bool sign, int qExp)
     {
         int signLen = (sign) ? 1 : 0;
-        ascii[0] = ascii_minus; // overwritten by the '0' when unsigned
+        @out[0] = ascii_minus; // overwritten by the '0' when unsigned
         if (qExp <= 0 && qExp >= -6)
         {
             int k = -qExp;
             int zeroLen = (k == 0) ? 1 : k + 2;
-            PlainZero[..zeroLen].CopyTo(ascii[signLen..]);
+            PlainZero[..zeroLen].CopyTo(@out[signLen..]);
             return signLen + zeroLen;
         }
         // A positive exponent needs an explicit '+'; a negative one prints its
@@ -1405,23 +1405,23 @@ public static class Decimal128TextCodec
         // already taken every qExp in [-6, 0], so this branch never sees zero.
         int plusLen = (qExp > 0) ? 1 : 0;
         int baseLen = signLen + ZeroExpText.Length + plusLen;
-        ZeroExpText.CopyTo(ascii[signLen..]);
-        ascii[signLen + ZeroExpText.Length] = ascii_plus; // overwritten by the '-' when qExp < 0
-        return baseLen + appendInt(ascii, baseLen, qExp);
+        ZeroExpText.CopyTo(@out[signLen..]);
+        @out[signLen + ZeroExpText.Length] = ascii_plus; // overwritten by the '-' when qExp < 0
+        return baseLen + appendInt(@out, baseLen, qExp);
     }
 
     /// <summary>
     /// Format a finite non-zero value with <c>qExp == 0</c> as a plain integer
     /// sequence: no radix point, no exponent.
     /// </summary>
-    private static int fnzToIntegerAscii(Span<byte> ascii, bool sign, int digitLen, ulong dw1, ulong dw0)
+    private static int fnzToIntegerAscii(Span<byte> @out, bool sign, int digitLen, ulong dw1, ulong dw0)
     {
         verify(digitLen > 0);
         int signLen = (sign) ? 1 : 0;
         // written unconditionally: when there is no sign the first digit
         // overwrites it, which is cheaper than branching
-        ascii[0] = ascii_minus;
-        u128ToAscii(digitLen, dw1, dw0, ascii, signLen);
+        @out[0] = ascii_minus;
+        u128ToAscii(digitLen, dw1, dw0, @out, signLen);
         return signLen + digitLen;
     }
 
@@ -1435,26 +1435,26 @@ public static class Decimal128TextCodec
     /// one position to open a slot for the radix point. Leading zeros are
     /// written directly into the buffer before the digits.
     /// </remarks>
-    private static int fnzToDecimalPointAscii(Span<byte> ascii, bool sign, int qExp, int digitLen, ulong dw1, ulong dw0)
+    private static int fnzToDecimalPointAscii(Span<byte> @out, bool sign, int qExp, int digitLen, ulong dw1, ulong dw0)
     {
         int digitsRightOfDecimal = -qExp;
         int leadingZeroCount = Math.Max(1 + digitsRightOfDecimal - digitLen, 0);
         int signLen = (sign) ? 1 : 0;
         int decimalPointLen = 1;
         int totalLen = signLen + leadingZeroCount + decimalPointLen + digitLen;
-        ascii[0] = ascii_minus;
+        @out[0] = ascii_minus;
         int i = signLen;
         while (i <= leadingZeroCount) { // there is one extra here
-            ascii[i] = ascii_0;
+            @out[i] = ascii_0;
             i += 1;
         }
-        u128ToAscii(digitLen, dw1, dw0, ascii, signLen + leadingZeroCount);
+        u128ToAscii(digitLen, dw1, dw0, @out, signLen + leadingZeroCount);
         int j = totalLen - 1;
         while (j >= totalLen - digitsRightOfDecimal) {
-            ascii[j] = ascii[j - 1];
+            @out[j] = @out[j - 1];
             j -= 1;
         }
-        ascii[totalLen - digitsRightOfDecimal - 1] = ascii_dot;
+        @out[totalLen - digitsRightOfDecimal - 1] = ascii_dot;
         return totalLen;
     }
 
@@ -1469,7 +1469,7 @@ public static class Decimal128TextCodec
     /// non-negative exponents, <c>-</c> for negative, per the GDAS
     /// <c>to-scientific-string</c> form.
     /// </remarks>
-    private static int fnzToNormalizedScientificAscii(Span<byte> ascii, bool sign, int qExp, int digitLen, ulong dw1, ulong dw0)
+    private static int fnzToNormalizedScientificAscii(Span<byte> @out, bool sign, int qExp, int digitLen, ulong dw1, ulong dw0)
     {
         verify(digitLen > 0);
         int eExp = qExp + (digitLen - 1);
@@ -1492,17 +1492,17 @@ public static class Decimal128TextCodec
             expDigitLen = 1;
         }
         int totalLen = signLen + decimalPointLen + digitLen + expELen + expSignLen + expDigitLen;
-        ascii[0] = ascii_minus;
-        u128ToAscii(digitLen, dw1, dw0, ascii, signLen + decimalPointLen);
+        @out[0] = ascii_minus;
+        u128ToAscii(digitLen, dw1, dw0, @out, signLen + decimalPointLen);
         if (decimalPointLen > 0)
         {
-            ascii[signLen] = ascii[signLen + 1];
-            ascii[signLen + 1] = ascii_dot;
+            @out[signLen] = @out[signLen + 1];
+            @out[signLen + 1] = ascii_dot;
         }
         int iE = signLen + decimalPointLen + digitLen;
-        ascii[iE] = ascii_E;
-        ascii[iE + 1] = expSignByte;
-        renderTailDigitsBeforeIndex(expDigitLen, (ulong)eExpAbs, ascii, totalLen);
+        @out[iE] = ascii_E;
+        @out[iE + 1] = expSignByte;
+        renderTailDigitsBeforeIndex(expDigitLen, (ulong)eExpAbs, @out, totalLen);
         return totalLen;
     }
 
@@ -1511,17 +1511,17 @@ public static class Decimal128TextCodec
     /// zero, fixed-point when it is negative and the adjusted exponent is at
     /// least <c>-6</c>, scientific otherwise — the GDAS auto-select rule.
     /// </summary>
-    private static int fnzAscii(Span<byte> ascii, bool sign, int qExp, ulong dw1, ulong dw0)
+    private static int fnzAscii(Span<byte> @out, bool sign, int qExp, ulong dw1, ulong dw0)
     {
         int digitLen = calcDigitLen128(dw1, dw0);
         int eExp = qExp + (digitLen - 1);
         if (qExp == 0) {
-            return fnzToIntegerAscii(ascii, sign, digitLen, dw1, dw0);
+            return fnzToIntegerAscii(@out, sign, digitLen, dw1, dw0);
         }
         if (qExp <= 0 && eExp >= -6) {
-            return fnzToDecimalPointAscii(ascii, sign, qExp, digitLen, dw1, dw0);
+            return fnzToDecimalPointAscii(@out, sign, qExp, digitLen, dw1, dw0);
         }
-        return fnzToNormalizedScientificAscii(ascii, sign, qExp, digitLen, dw1, dw0);
+        return fnzToNormalizedScientificAscii(@out, sign, qExp, digitLen, dw1, dw0);
     }
 
     // ------------------------------------------------------------------
@@ -1562,7 +1562,7 @@ public static class Decimal128TextCodec
     /// renderer. <see cref="Bid128ToString(UInt128)"/> and
     /// <see cref="Bid128ToAscii(byte[], UInt128)"/> both wrap what this writes.
     /// </remarks>
-    private static int decodeBid128toAscii(Span<byte> ascii, ulong bid128Hi, ulong bid128Lo)
+    private static int decodeBid128toAscii(Span<byte> @out, ulong bid128Hi, ulong bid128Lo)
     {
         // IEEE754-2019 Table 3.6 -- Decimal interchange format parameters, p 23
         const int t = T_WIDTH; // trailing significand field width in bits
@@ -1573,7 +1573,7 @@ public static class Decimal128TextCodec
         // buffer that happens to fit the value in hand is still a caller bug,
         // and one that would otherwise surface only on the data that overflows
         // it.
-        demand(ascii.Length >= MaxLen, "the buffer is at least MaxLen bytes");
+        demand(@out.Length >= MaxLen, "the buffer is at least MaxLen bytes");
 
         // 1 + 17 + 110 == 128
         // 1 bit for the sign
@@ -1612,7 +1612,7 @@ public static class Decimal128TextCodec
         else if ((combination >> (W5 - 5)) == 0b11110)
         {
             // if the top 5 bits are 0b11110 then Infinity
-            return infAscii(ascii, sign);
+            return infAscii(@out, sign);
         }
         else
         {
@@ -1620,7 +1620,7 @@ public static class Decimal128TextCodec
             // with the next bit determining signaling NaN
             verify((combination >> (W5 - 5)) == 0b11111);
             bool isSignalingNaN = (((combination >> (W5 - 6)) & 1) != 0);
-            return nanAscii(ascii, sign, isSignalingNaN, coeffTHi, bid128Lo);
+            return nanAscii(@out, sign, isSignalingNaN, coeffTHi, bid128Lo);
         }
 
         ulong dw1 = (coeffHi << (t - 64)) | coeffTHi;
@@ -1632,9 +1632,9 @@ public static class Decimal128TextCodec
             MAXX_COEFF_34_HI < dw1 ||
             (dw1 == MAXX_COEFF_34_HI && (MAXX_COEFF_34_LO - 1) < dw0))
         {
-            return zerAscii(ascii, sign, qExp);
+            return zerAscii(@out, sign, qExp);
         }
-        return fnzAscii(ascii, sign, qExp, dw1, dw0);
+        return fnzAscii(@out, sign, qExp, dw1, dw0);
     }
 
     /// <summary>
@@ -1645,7 +1645,7 @@ public static class Decimal128TextCodec
     /// to <c>(sign, qExp, coefficient)</c> and then dispatch to the same leaf
     /// renderers, which have never seen an interchange format.
     /// </remarks>
-    private static int decodeDpd128toAscii(Span<byte> ascii, ulong dpd128Hi, ulong dpd128Lo)
+    private static int decodeDpd128toAscii(Span<byte> @out, ulong dpd128Hi, ulong dpd128Lo)
     {
         const int w = 12;      // exponent continuation width
         const int t = T_WIDTH; // trailing significand field width in bits
@@ -1655,7 +1655,7 @@ public static class Decimal128TextCodec
         // buffer that happens to fit the value in hand is still a caller bug,
         // and one that would otherwise surface only on the data that overflows
         // it.
-        demand(ascii.Length >= MaxLen, "the buffer is at least MaxLen bytes");
+        demand(@out.Length >= MaxLen, "the buffer is at least MaxLen bytes");
 
         bool sign = ((dpd128Hi & SIGN_BIT) != 0);
         int combination = (int)((dpd128Hi >> (t - 64)) & 0x1FFFF);
@@ -1683,7 +1683,7 @@ public static class Decimal128TextCodec
         }
         else if ((combination >> (W5 - 5)) == 0b11110)
         {
-            return infAscii(ascii, sign);
+            return infAscii(@out, sign);
         }
         else
         {
@@ -1720,12 +1720,12 @@ public static class Decimal128TextCodec
         }
 
         if (isNaN) {
-            return nanAscii(ascii, sign, isSignaling, dw1, dw0);
+            return nanAscii(@out, sign, isSignaling, dw1, dw0);
         }
         if ((dw1 | dw0) == 0) {
-            return zerAscii(ascii, sign, qExp);
+            return zerAscii(@out, sign, qExp);
         }
-        return fnzAscii(ascii, sign, qExp, dw1, dw0);
+        return fnzAscii(@out, sign, qExp, dw1, dw0);
     }
 
     // ------------------------------------------------------------------
@@ -2192,7 +2192,7 @@ public static class Decimal128TextCodec
     /// and is processed by the main loop.
     /// </para>
     /// </remarks>
-    private static string? parseFiniteValueText(ref Words outWords, bool formatIsBid, bool sign,
+    private static string? parseFiniteValueText(ref Words @out, bool formatIsBid, bool sign,
                                                 int chFirst, string str, int startPos)
     {
         int pos = startPos;
@@ -2352,7 +2352,7 @@ public static class Decimal128TextCodec
         // opposite directions, so both corrections land here.
         int signedExp = (expSign) ? -exp : exp;
         int qExp = signedExp - fractionalDigitCount + Math.Max(0, significantDigitCount - 34);
-        outWords = roundAndFinalizeFinite(formatIsBid, sign, qExp, dw1, dw0, residue);
+        @out = roundAndFinalizeFinite(formatIsBid, sign, qExp, dw1, dw0, residue);
         return null;
     }
 
@@ -2360,7 +2360,7 @@ public static class Decimal128TextCodec
     /// Parse the keyword <c>Infinity</c>, or its 3-letter abbreviation
     /// <c>Inf</c>, case-insensitively.
     /// </summary>
-    private static string? parseInfinityText(ref Words outWords, bool sign, int chFirst, string str, int startPos)
+    private static string? parseInfinityText(ref Words @out, bool sign, int chFirst, string str, int startPos)
     {
         int pos = startPos;
         int ch = chFirst;
@@ -2386,7 +2386,7 @@ public static class Decimal128TextCodec
         if (ch != -1 || (chPrevCode != 'f' && chPrevCode != 'y')) {
             return "FAILURE_PARSING_INFINITY";
         }
-        outWords = (INF_PATTERN_HI | (sign ? SIGN_BIT : 0), 0);
+        @out = (INF_PATTERN_HI | (sign ? SIGN_BIT : 0), 0);
         return null;
     }
 
@@ -2425,7 +2425,7 @@ public static class Decimal128TextCodec
     /// is not this, and stays rejected.
     /// </para>
     /// </remarks>
-    private static string? parseNanText(ref Words outWords, bool formatIsBid, bool sign,
+    private static string? parseNanText(ref Words @out, bool formatIsBid, bool sign,
                                         int chFirst, string str, int startPos)
     {
         int pos = startPos;
@@ -2521,7 +2521,7 @@ public static class Decimal128TextCodec
                 }
             }
         }
-        outWords = setNaN(formatIsBid, sign, hasS, payloadDw1, payloadDw0);
+        @out = setNaN(formatIsBid, sign, hasS, payloadDw1, payloadDw0);
         return null;
     }
 
@@ -2533,7 +2533,7 @@ public static class Decimal128TextCodec
     /// The leading character is passed through to the dispatched parser so it
     /// does not have to re-read what the dispatcher already consumed.
     /// </remarks>
-    private static string? encodeStringOrError(ref Words outWords, bool formatIsBid, string str)
+    private static string? encodeStringOrError(ref Words @out, bool formatIsBid, string str)
     {
         int pos = 0;
         int chFirst = codeAt(str, pos);
@@ -2545,14 +2545,14 @@ public static class Decimal128TextCodec
             pos += 1;
         }
         if (isDigit(ch) || ch == ascii_dot) {
-            return parseFiniteValueText(ref outWords, formatIsBid, sign, ch, str, pos);
+            return parseFiniteValueText(ref @out, formatIsBid, sign, ch, str, pos);
         }
         int chLower = ch | 0x20;
         if (chLower == 'i') {
-            return parseInfinityText(ref outWords, sign, ch, str, pos);
+            return parseInfinityText(ref @out, sign, ch, str, pos);
         }
         if (chLower == 'n' || chLower == 's' || chLower == 'q') {
-            return parseNanText(ref outWords, formatIsBid, sign, ch, str, pos);
+            return parseNanText(ref @out, formatIsBid, sign, ch, str, pos);
         }
         if (chFirst == -1) {
             return "EMPTY_STRING";

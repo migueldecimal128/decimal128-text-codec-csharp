@@ -139,7 +139,7 @@ public static class Decimal128TextCodec
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void demand(bool condition, string message = "invariant")
+    private static void demand(bool condition, string message)
     {
         if (!condition) {
             impossible(message);
@@ -757,13 +757,22 @@ public static class Decimal128TextCodec
     // ------------------------------------------------------------------
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong hiWord(UInt128 v) => (ulong)(v >> 64);
+    private static ulong hiWord(UInt128 v)
+    {
+        return (ulong)(v >> 64);
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong loWord(UInt128 v) => (ulong)v;
+    private static ulong loWord(UInt128 v)
+    {
+        return (ulong)v;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static UInt128 joinWords(Words w) => ((UInt128)w.Hi << 64) | w.Lo;
+    private static UInt128 joinWords(Words w)
+    {
+        return ((UInt128)w.Hi << 64) | w.Lo;
+    }
 
     // ------------------------------------------------------------------
     // Low-level unsigned arithmetic
@@ -2097,7 +2106,10 @@ public static class Decimal128TextCodec
     /// The digit test, spelled out once: <c>true</c> for '0' through '9' and nothing else.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool isDigit(int ch) => (ch >= ascii_0 && ch <= ascii_9);
+    private static bool isDigit(int ch)
+    {
+        return (ch >= ascii_0 && ch <= ascii_9);
+    }
 
     /// <summary>
     /// Parse a finite decimal numeral and produce the corresponding encoding. Accepts an
